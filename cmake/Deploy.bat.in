@@ -1,0 +1,27 @@
+@echo off
+REM Скрипт развёртывания Qt-приложения (сгенерирован CMake)
+
+set WINDEPLOYQT=@WINDEPLOYQT_EXECUTABLE@
+set EXE_PATH=@EXE_PATH@
+set QML_DIR=@QML_DIR@
+set BUILD_TYPE=@CMAKE_BUILD_TYPE@
+
+if not exist "%WINDEPLOYQT%" (
+    echo windeployqt не найден: %WINDEPLOYQT%
+    exit /b 1
+)
+
+if not exist "%EXE_PATH%" (
+    echo Исполняемый файл не найден: %EXE_PATH%
+    exit /b 1
+)
+
+echo Running windeployqt for %EXE_PATH% ...
+if "%BUILD_TYPE%"=="Debug" (
+    "%WINDEPLOYQT%" "%EXE_PATH%" --debug --qmldir "%QML_DIR%"
+) else (
+    "%WINDEPLOYQT%" "%EXE_PATH%" --qmldir "%QML_DIR%"
+)
+
+echo Deployment finished.
+pause
