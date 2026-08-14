@@ -1,6 +1,16 @@
 <RCC>
     <qresource prefix="/">
         <file>qml/main.qml</file>
-        <file>qml/TrafficLightView.qml</file>
+        <file>qml/TrafficLightUi/Theme.qml</file>
+        <file>qml/TrafficLightUi/LightBulb.qml</file>
+        <file>qml/TrafficLightUi/LightModeEditor.qml</file>
+        <file>qml/TrafficLightUi/StateDelegate.qml</file>
+        <file>qml/TrafficLightUi/StateDelegateIndicator.qml</file>
+        <file>qml/TrafficLightUi/StateEditor.qml</file>
+        <file>qml/TrafficLightUi/TrafficLightDisplay.qml</file>
+        <file>qml/TrafficLightUi/StyledComboBox.qml</file>
+        <file>qml/TrafficLightUi/StyledSpinBox.qml</file>
+        <file>qml/TrafficLightUi/StyledButton.qml</file>
+        <file>qml/TrafficLightUi/qmldir</file>
     </qresource>
 </RCC>

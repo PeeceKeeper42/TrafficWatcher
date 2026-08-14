@@ -1,183 +1,299 @@
+/**
+ * @file TrafficLight.cpp
+ * @brief Реализация контроллера светофора.
+ */
+
 #include "TrafficLight.h"
 #include <QDebug>
 
-TrafficLight::TrafficLight(QObject *parent)
-    : QObject(parent)
+namespace TrafficLight
 {
-    // Значения по умолчанию (в миллисекундах)
-    m_durations[LightState::Red]        = 3000;
-    m_durations[LightState::RedYellow]  = 1000;
-    m_durations[LightState::Green]      = 4000;
-    m_durations[LightState::Yellow]     = 2000;
-    // Для None длительность не нужна
+    TrafficLight::TrafficLight(QObject *parent)
+        : QObject(parent)
+    {
+        m_states = new StatesModel(this);
 
-    connect(&m_timer, &QTimer::timeout, this, &TrafficLight::onTimeout);
-}
+        connect(m_states, &StatesModel::dataChanged,
+                this, &TrafficLight::onStateDataChanged);
+        connect(m_states, &StatesModel::rowsRemoved,
+                this, &TrafficLight::onRowsRemoved);
+        connect(m_states, &StatesModel::modelReset,
+                this, &TrafficLight::onRowsRemoved);
+        connect(m_states, &StatesModel::rowsInserted,
+                this, &TrafficLight::onRowsInserted);
 
-int TrafficLight::redDuration() const
-{
-    return m_durations.value(LightState::Red, 3000);
-}
+        connect(&m_blinkTimer, &QTimer::timeout,
+                this, &TrafficLight::onBlinkTimeout);
+        connect(&m_updateTimer, &QTimer::timeout,
+                this, &TrafficLight::onUpdateTimer);
 
-int TrafficLight::redYellowDuration() const
-{
-    return m_durations.value(LightState::RedYellow, 1000);
-}
+        // Начальное состояние
+        m_states->addState();
+        setCurrentIndex(0);
+    }
 
-int TrafficLight::greenDuration() const
-{
-    return m_durations.value(LightState::Green, 4000);
-}
+    StatesModel* TrafficLight::states() const { return m_states; }
+    int TrafficLight::currentIndex() const { return m_currentIndex; }
+    bool TrafficLight::isRunning() const { return m_isRunning; }
+    bool TrafficLight::blinkPhase() const { return m_blinkPhase; }
+    TrafficLightState* TrafficLight::currentState() const { return m_currentState; }
 
-int TrafficLight::yellowDuration() const
-{
-    return m_durations.value(LightState::Yellow, 2000);
-}
+    void TrafficLight::setCurrentIndex(int index)
+    {
+        if (m_currentIndex == index)
+            return;
 
-void TrafficLight::setRedDuration(int ms)
-{
-    if (ms != redDuration()) {
-        m_durations[LightState::Red] = ms;
-        emit redDurationChanged();
-        // Если сейчас горит красный, перезапускаем таймер с новым значением
-        if (m_isRunning && m_currentState == LightState::Red) {
-            startTimerForCurrentState();
+        if (index < -1 || index >= m_states->rowCount())
+            return;
+
+        m_currentIndex = index;
+        emit currentIndexChanged();
+
+        updateCurrentState();
+
+        if (m_isRunning)
+        {
+            applyState(m_currentIndex);
         }
     }
-}
 
-void TrafficLight::setRedYellowDuration(int ms)
-{
-    if (ms != redYellowDuration()) {
-        m_durations[LightState::RedYellow] = ms;
-        emit redYellowDurationChanged();
-        if (m_isRunning && m_currentState == LightState::RedYellow) {
-            startTimerForCurrentState();
+    void TrafficLight::start()
+    {
+        if (m_isRunning)
+            return;
+
+        if (m_states->rowCount() == 0)
+        {
+            qWarning() << "No states available to start";
+            return;
+        }
+
+        m_isRunning = true;
+        emit isRunningChanged();
+
+        if (m_currentIndex < 0 || m_currentIndex >= m_states->rowCount())
+        {
+            setCurrentIndex(0);
+        }
+        else
+        {
+            applyState(m_currentIndex);
         }
     }
-}
 
-void TrafficLight::setGreenDuration(int ms)
-{
-    if (ms != greenDuration()) {
-        m_durations[LightState::Green] = ms;
-        emit greenDurationChanged();
-        if (m_isRunning && m_currentState == LightState::Green) {
-            startTimerForCurrentState();
+    void TrafficLight::stop()
+    {
+        if (!m_isRunning) return;
+
+        m_blinkTimer.stop();
+        m_updateTimer.stop();
+        stopAllChannels();
+
+        m_isRunning = false;
+        m_blinkPhase = false;
+
+        emit isRunningChanged();
+        emit blinkPhaseChanged();
+    }
+
+    void TrafficLight::nextState()
+    {
+        if (!m_isRunning || m_states->rowCount() == 0)
+            return;
+
+        int nextIndex = (m_currentIndex + 1) % m_states->rowCount();
+        setCurrentIndex(nextIndex);
+    }
+
+    void TrafficLight::updateState(int index)
+    {
+        if (index >= 0 && index < m_states->rowCount())
+            applyState(index);
+    }
+
+    void TrafficLight::onRowsInserted(const QModelIndex &parent, int first, int last)
+    {
+        Q_UNUSED(parent);
+        Q_UNUSED(first);
+        setCurrentIndex(last);
+    }
+
+    void TrafficLight::onStateDataChanged()
+    {
+        if (m_isRunning && m_currentIndex >= 0)
+            applyState(m_currentIndex);
+    }
+
+    void TrafficLight::onBlinkTimeout()
+    {
+        m_blinkPhase = !m_blinkPhase;
+        emit blinkPhaseChanged();
+    }
+
+    void TrafficLight::onRowsRemoved()
+    {
+        const int rowCount = m_states->rowCount();
+
+        TrafficLightState* oldState = m_currentState;
+
+        if (rowCount == 0)
+        {
+            m_blinkTimer.stop();
+            m_updateTimer.stop();
+            m_channelStates.clear();
+
+            if (m_isRunning)
+            {
+                m_isRunning = false;
+                emit isRunningChanged();
+            }
+
+            m_currentIndex = -1;
+            emit currentIndexChanged();
+            updateCurrentState();
+            return;
+        }
+
+        if (m_currentIndex >= rowCount)
+        {
+            m_currentIndex = rowCount - 1;
+            emit currentIndexChanged();
+        }
+
+        updateCurrentState();
+
+        if (m_currentState != oldState)
+        {
+            m_channelStates.clear();
+
+            if (m_isRunning)
+            {
+                if (m_currentState)
+                    applyState(m_currentIndex);
+                else
+                    stop();
+            }
         }
     }
-}
 
-void TrafficLight::setYellowDuration(int ms)
-{
-    if (ms != yellowDuration()) {
-        m_durations[LightState::Yellow] = ms;
-        emit yellowDurationChanged();
-        if (m_isRunning && m_currentState == LightState::Yellow) {
-            startTimerForCurrentState();
+    void TrafficLight::onUpdateTimer()
+    {
+        if (!m_isRunning)
+            return;
+
+        bool allFinished = true;
+
+        for (auto &ch : m_channelStates)
+        {
+            if (!ch.mode)
+                continue;
+
+            if (!ch.mode->isActive())
+                continue;
+
+            ch.remainingMs -= 100;
+            if (ch.remainingMs <= 0)
+            {
+                ch.mode->setActive(false);
+                ch.remainingMs = 0;
+            }
+            else
+            {
+                allFinished = false;
+            }
+        }
+
+        if (allFinished)
+        {
+            m_updateTimer.stop();
+            nextState();
         }
     }
-}
 
-bool TrafficLight::isRunning() const
-{
-    return m_isRunning;
-}
+    void TrafficLight::applyState(int index)
+    {
+        if (index < 0 || index >= m_states->rowCount())
+        {
+            m_blinkTimer.stop();
+            m_updateTimer.stop();
 
-TrafficLight::LightState TrafficLight::currentState() const
-{
-    return m_currentState;
-}
-
-void TrafficLight::start()
-{
-    if (m_isRunning)
-        return;
-
-    m_isRunning = true;
-    emit isRunningChanged();
-
-    setState(LightState::Red);
-    startTimerForCurrentState();
-}
-
-void TrafficLight::stop()
-{
-    if (!m_isRunning)
-        return;
-
-    m_timer.stop();
-    m_isRunning = false;
-    emit isRunningChanged();
-
-    setState(LightState::None);
-}
-
-void TrafficLight::nextState()
-{
-    if (!m_isRunning) {
-        // Если не запущен, можно ничего не делать или включить
-        return;
-    }
-
-    // Определяем следующее состояние по порядку
-    LightState next;
-    switch (m_currentState) {
-    case LightState::Red:
-        next = LightState::RedYellow;
-        break;
-    case LightState::RedYellow:
-        next = LightState::Green;
-        break;
-    case LightState::Green:
-        next = LightState::Yellow;
-        break;
-    case LightState::Yellow:
-        next = LightState::Red;
-        break;
-    default:
-        next = LightState::Red;
-        break;
-    }
-
-    setState(next);
-    startTimerForCurrentState();
-}
-
-void TrafficLight::onTimeout()
-{
-    if (m_isRunning) {
-        nextState();
-    }
-}
-
-void TrafficLight::setState(LightState state)
-{
-    if (m_currentState != state) {
-        m_currentState = state;
-        emit stateChanged(state);
-    }
-}
-
-void TrafficLight::startTimerForCurrentState()
-{
-    if (m_currentState == LightState::None) {
-        m_timer.stop();
-        return;
-    }
-
-    int duration = m_durations.value(m_currentState, 3000);
-    if (duration <= 0) {
-        // Если длительность нулевая, переходим сразу на следующее состояние
-        // Но лучше предотвратить зацикливание — просто пропускаем
-        if (m_isRunning) {
-            // Можно запланировать немедленный переход, но для простоты остановим таймер
-            m_timer.stop();
-            // И вызовем nextState() через 0 мс, чтобы не зациклиться
-            QTimer::singleShot(0, this, &TrafficLight::nextState);
+            stopAllChannels();
+            return;
         }
-        return;
+
+        m_currentIndex = index;
+        updateCurrentState();
+
+        TrafficLightState* state = m_states->getState(index);
+        if (!state)
+            return;
+
+        m_updateTimer.stop();
+        m_blinkTimer.stop();
+
+        m_channelStates.clear();
+        auto addChannel = [&](TrafficLightMode* mode)
+        {
+            if (!mode)
+                return;
+
+            bool active = (mode->getMode() != TrafficLightMode::Off);
+            mode->setActive(active);
+
+            ChannelState ch;
+            ch.mode = mode;
+            ch.remainingMs = active ? mode->getDuration() : 0;
+
+            m_channelStates.append(ch);
+        };
+
+        addChannel(state->redMode());
+        addChannel(state->yellowMode());
+        addChannel(state->greenMode());
+
+        if (m_isRunning)
+            m_updateTimer.start(100);
+
+        bool hasBlink = false;
+        if (state->redMode()->getMode() == TrafficLightMode::Blink) hasBlink = true;
+        if (state->yellowMode()->getMode() == TrafficLightMode::Blink) hasBlink = true;
+        if (state->greenMode()->getMode() == TrafficLightMode::Blink) hasBlink = true;
+
+        if (hasBlink && m_isRunning)
+        {
+            m_blinkTimer.start(100);
+        }
+        else
+        {
+            m_blinkTimer.stop();
+            m_blinkPhase = false;
+            emit blinkPhaseChanged();
+        }
     }
 
-    m_timer.start(duration);
-}
+    void TrafficLight::updateCurrentState()
+    {
+        TrafficLightState* newState =
+            (m_currentIndex >= 0 && m_currentIndex < m_states->rowCount())
+                ? m_states->getState(m_currentIndex)
+                : nullptr;
+
+        if (m_currentState != newState)
+        {
+            m_currentState = newState;
+            emit currentStateChanged();
+        }
+    }
+
+    void TrafficLight::stopAllChannels()
+    {
+        for (auto &ch : m_channelStates)
+        {
+            if (ch.mode)
+                ch.mode->setActive(false);
+        }
+
+        m_channelStates.clear();
+    }
+
+} // namespace TrafficLight

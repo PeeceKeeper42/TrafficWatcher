@@ -4,11 +4,15 @@
 
 set(TrafficLight_Headers
     ${CMAKE_CURRENT_SOURCE_DIR}/TrafficLight.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/TrafficLightState.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/StateModel.h
 )
 
 set(TrafficLight_Sources
     ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/TrafficLight.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/TrafficLightState.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/StateModel.cpp
 )
 
 set(TrafficLight_Forms 

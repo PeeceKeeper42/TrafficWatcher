@@ -1,107 +1,153 @@
+/**
+ * @file main.qml
+ * @brief Главное окно приложения.
+ * @details Содержит контроллер TrafficLight, список состояний, редактор и визуализацию светофора.
+ *          Управляет взаимодействием между моделью, представлением и контроллером.
+ */
+
 import QtQuick 2.15
 import QtQuick.Controls 2.15
 import QtQuick.Layouts 1.15
 import TrafficLight 1.0
+import TrafficLightUi 1.0
 
 ApplicationWindow {
+    id: window
     visible: true
-    width: 600
-    height: 400
-    title: "Светофор"
+    width: 1080
+    height: 780
+    minimumWidth: 760
+    minimumHeight: 780
+    title: qsTr("Светофор")
+    color: Theme.colorBackground
 
-    // Создаём экземпляр модели светофора
-    TrafficLight {
-        id: trafficLight
-    }
+    TrafficLight { id: trafficLight }
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 20
+        anchors.margins: Theme.spacingLarge
+        spacing: Theme.spacingLarge
 
-        // Левая панель — настройки
         ColumnLayout {
-            spacing: 15
             Layout.fillWidth: true
+            Layout.fillHeight: true
+            spacing: Theme.spacingMedium
 
-            GroupBox {
-                title: "Длительность (мс)"
-                Layout.fillWidth: true
-
-                GridLayout {
-                    columns: 2
-                    columnSpacing: 10
-                    rowSpacing: 8
-
-                    Label { text: "Красный:" }
-                    SpinBox {
-                        from: 500; to: 10000; stepSize: 500
-                        value: trafficLight.redDuration
-                        onValueChanged: trafficLight.redDuration = value
-                    }
-                    Label { text: "Красный+жёлтый:" }
-                    SpinBox {
-                        from: 500; to: 5000; stepSize: 500
-                        value: trafficLight.redYellowDuration
-                        onValueChanged: trafficLight.redYellowDuration = value
-                    }
-                    Label { text: "Зелёный:" }
-                    SpinBox {
-                        from: 1000; to: 20000; stepSize: 500
-                        value: trafficLight.greenDuration
-                        onValueChanged: trafficLight.greenDuration = value
-                    }
-                    Label { text: "Жёлтый:" }
-                    SpinBox {
-                        from: 500; to: 5000; stepSize: 500
-                        value: trafficLight.yellowDuration
-                        onValueChanged: trafficLight.yellowDuration = value
-                    }
-                }
-            }
-
+            // Панель управления
             RowLayout {
-                spacing: 10
-                Button {
-                    text: "Старт"
-                    onClicked: trafficLight.start()
+                Layout.fillWidth: true
+                spacing: Theme.spacingSmall
+
+                StyledButton {
+                    text: trafficLight.isRunning ? qsTr("Остановить") : qsTr("Запустить")
+                    backgroundColor: trafficLight.isRunning ? Theme.colorDanger : Theme.colorAccent
+                    textColor: "white"
+                    borderColor: "transparent"
+                    onClicked: trafficLight.isRunning ? trafficLight.stop() : trafficLight.start()
                 }
-                Button {
-                    text: "Стоп"
-                    onClicked: trafficLight.stop()
+
+                StyledButton {
+                    text: qsTr("Добавить состояние")
+                    onClicked: trafficLight.states.addState()
                 }
-                Button {
-                    text: "Следующий"
-                    onClicked: trafficLight.nextState()
+
+                StyledButton {
+                    text: qsTr("Удалить выбранное")
+                    enabled: trafficLight.currentIndex >= 0
+                    onClicked: trafficLight.states.removeState(trafficLight.currentIndex)
+                }
+
+                Item { Layout.fillWidth: true }
+
+                Label {
+                    text: qsTr("Текущее: %1").arg(trafficLight.currentState ? trafficLight.currentState.name : qsTr("нет"))
+                    color: Theme.colorTextSecondary
+                    font.family: Theme.fontFamily
                 }
             }
 
-            // Отображение текущего состояния (для отладки)
-            Label {
-                text: {
-                    var state = trafficLight.currentState;
-                    var stateName;
-                    if (state === TrafficLight.None) stateName = "Выключен";
-                    else if (state === TrafficLight.Red) stateName = "Красный";
-                    else if (state === TrafficLight.RedYellow) stateName = "Красный+Жёлтый";
-                    else if (state === TrafficLight.Green) stateName = "Зелёный";
-                    else if (state === TrafficLight.Yellow) stateName = "Жёлтый";
-                    else stateName = "Неизвестно";
-                    return "Состояние: " + stateName;
+            // Список состояний
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: parent.height * 0.55
+                radius: Theme.radiusMedium
+                color: Theme.colorSurface
+                border.color: Theme.colorBorder
+                border.width: 1
+
+                ListView {
+                    id: listView
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingSmall
+                    spacing: Theme.spacingTiny
+                    clip: true
+                    model: trafficLight.states
+                    currentIndex: trafficLight.currentIndex
+
+                    delegate: StateDelegate {
+                        highlight: trafficLight.currentIndex === index
+                        onSelected: trafficLight.currentIndex = index
+                    }
+
+                    ScrollBar.vertical: ScrollBar { }
+
+                    Label {
+                        anchors.centerIn: parent
+                        visible: listView.count === 0
+                        text: qsTr("Состояний пока нет.\nНажмите «Добавить состояние»")
+                        color: Theme.colorTextSecondary
+                        font.family: Theme.fontFamily
+                        horizontalAlignment: Text.AlignHCenter
+                    }
                 }
-                Layout.alignment: Qt.AlignLeft
             }
-            Label {
-                text: "Запущен: " + (trafficLight.isRunning ? "Да" : "Нет")
-                Layout.alignment: Qt.AlignLeft
+
+            // Редактор состояния
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Theme.radiusMedium
+                color: Theme.colorSurface
+                border.color: Theme.colorBorder
+                border.width: 1
+
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Theme.spacingMedium
+                    spacing: Theme.spacingSmall
+
+                    Label {
+                        text: qsTr("Редактор состояния")
+                        color: Theme.colorTextPrimary
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.fontSizeTitle
+                        font.bold: true
+                    }
+
+                    StateEditor {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        stateObject: trafficLight.currentState
+                    }
+                }
             }
         }
 
-        // Справа — компонент светофора
-        TrafficLightView {
-            controller: trafficLight
-            Layout.alignment: Qt.AlignCenter
-            Layout.preferredWidth: 120
-            Layout.preferredHeight: 360
+        // Светофор
+        Rectangle {
+            Layout.preferredWidth: window.width / 5
+            Layout.fillHeight: true
+            Layout.minimumWidth: 140
+            radius: Theme.radiusMedium
+            color: Theme.colorSurface
+            border.color: Theme.colorBorder
+            border.width: 1
+
+            TrafficLightDisplay {
+                anchors.fill: parent
+                anchors.margins: Theme.spacingSmall
+                controller: trafficLight
+            }
         }
     }
 }
