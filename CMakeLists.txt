@@ -27,8 +27,8 @@ add_subdirectory(src)
 option(BUILD_TESTS "Включить тесты" OFF)
 
 if(BUILD_TESTS)
-    message(STATUS "Сборка тестов включена, но тестовые файлы не добавлены.")
-    # add_subdirectory(tests)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 # =============================================================================
