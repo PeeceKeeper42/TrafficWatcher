@@ -47,12 +47,7 @@ translations.qm
 
 # ---- IDE / editor ----
 # CLion / IntelliJ / JetBrains
-.idea/*
-!.idea/inspectionProfiles/
-!.idea/inspectionProfiles/**
-!.idea/codeStyles/
-!.idea/codeStyles/Project.xml
-!.idea/dictionaries/
+.idea/
 *.iws
 *.ipr
 
