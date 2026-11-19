@@ -1,0 +1,102 @@
+# ---- Build output directories ----
+# CLion default build dirs (any location)
+cmake-build-*/
+build/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+
+# ---- Compiled objects & binaries ----
+*.o
+*.obj
+*.so
+*.so.*
+*.dylib
+*.dll
+*.a
+*.lib
+*.exe
+*.out
+*.app
+*.gch
+*.pch
+
+# ---- CMake / configure artifacts ----
+CMakeScripts/
+Testing/
+*.o.d
+compile_commands.json
+_deps/
+CMakeUserPresets.json
+
+# ---- Qt ----
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+*.qrc.bak
+*.pro.user
+*.pro.user.*
+.qmake.stash
+Makefile.*
+translations.qm
+*.qm
+
+# ---- IDE / editor ----
+# CLion / IntelliJ / JetBrains
+.idea/*
+!.idea/inspectionProfiles/
+!.idea/inspectionProfiles/**
+!.idea/codeStyles/
+!.idea/codeStyles/Project.xml
+!.idea/dictionaries/
+*.iws
+*.ipr
+
+# VS Code
+.vscode/
+
+# Vim / Emacs / Sublime
+*.swp
+*.swo
+*~
+\#*\#
+.idea.*
+
+# ---- Version / package managers ----
+vcpkg_installed/
+conan/
+*.conan.db
+package-lock.json
+
+# ---- Databases / local data ----
+*.db
+*.sqlite
+*.sqlite3
+
+# ---- Logs & temporary files ----
+*.log
+*.tmp
+*.bak
+*.cache
+tmp/
+
+# ---- Qoder ----
+.qoder/
+
+# ---- OS-specific ----
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+
+# Linux
+.directory
+.Trash-*
