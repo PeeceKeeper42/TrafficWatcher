@@ -33,7 +33,11 @@
 (какую проблему это решает) → **что будет, если нарушить** (конкретный симптом) → **мини-практика**
 (2–5 минут в терминале, чтобы проверить утверждение на своей машине). Отдельные абзацы
 **Тонкость N.** — неочевидные детали уровня middle: они стоят в конце того раздела, к которому
-относятся, и каждая проверяется одной командой.
+относятся, и каждая проверяется одной командой. У разделов, где появляются новые команды, есть ещё
+один блок — **Паспорт конструкций раздела**: на каждую конструкцию ровно одна карточка с полной
+сигнатурой, формами аргументов, сценариями применения, сценарием «здесь это не годится», best practice
+и справкой middle с командой проверки. В конце урока все карточки свёрнуты в одну таблицу
+(§14) — по ней удобно вспоминать урок перед ревью.
 
 Термины, которые используются дальше без перевода:
 
@@ -44,14 +48,21 @@
 | **Распространение (propagation)** | Механизм: требование, помеченное `PUBLIC`/`INTERFACE`, автоматически передаётся всем, кто ссылается на таргет в `target_link_libraries` |
 | **Генератор** | Программа, которой CMake передаёт управление сборкой: Ninja, Makefiles, MSBuild, Xcode. Определяет, одно- или многоконфигурационным будет проект |
 | **Кэш CMake** | Файл `CMakeCache.txt` в build-директории: итоговые значения всех `-D`-переменных. Источник правды при повторных configure |
-| **Пресет** | Именованный набор параметров configure/build/test/install в `CMakePresets.json`, вызываемый `cmake --preset <имя>` |
+| **Пресет** | Именованный набор параметров одной из операций configure/build/test/package/workflow в `CMakePresets.json`, вызываемый `cmake --preset <имя>` (и аналогами `--build`/`ctest`/`cpack`) |
 
-Мини-практика 0 (1 минута). Выполни и запомни ответ — он пригодится в §4:
+Мини-практика 0 (1 минута). Выполни и запомни ответы — этими командами мы пользуемся весь урок
+(карточки «Паспорт конструкций» построены именно на их выводе):
 
 ```bash
-cmake --help-presets          # какие версии схемы понимает твой cmake
-cmake --help-property-list    # все свойства таргетов; найди INCLUDE_DIRECTORIES и INTERFACE_*
+cmake --version                    # 4.3.2 на этой машине; от него зависят доступные версии схемы пресетов
+cmake --help-manual cmake-presets  # раздел Versions: какие schema-version понимает твой cmake
+cmake --help-property-list         # все свойства; найди INCLUDE_DIRECTORIES и INTERFACE_*
 ```
+
+Смысл этих трёх: `--help-command`, `--help-property`, `--help-variable`, `--help-policy` и `--help-manual`
+печатают ту же документацию, что и сайт, но **именно той версии CMake, которая у тебя стоит**. Полный
+список руководств — `cmake --help-manual-list`. Это и есть ответ на «а как узнать точную сигнатуру»:
+не гуглить по чужой версии, а спрашивать у своего cmake.
 
 ### 0.1 Зачем это нужно именно сейчас, если впереди M2 и M3
 
@@ -220,6 +231,96 @@ a.cpp, include/A.h, main.cpp
 
 ---
 
+### 1.6 Паспорт конструкций раздела
+
+Четыре команды, из которых состоит весь пример выше. Сигнатуры сверены по `cmake --help-command <команда>`
+на том CMake 4.3.2, что у тебя в PATH, — при сомнении перепроверяй той же командой, а не этим текстом:
+в других версиях формы аргументов меняются.
+
+**`add_library(<name> [<type>] [EXCLUDE_FROM_ALL] <source>...)`** — команда, фаза configure, создаёт вершину графа.
+- **Зачем:** объявляет библиотеку (в нашем графе — `tw_core`) и фиксирует список её источников.
+- **Формы аргументов:** `<type>` = `STATIC` / `SHARED` / `MODULE` / `OBJECT` (по умолчанию зависит от
+  `BUILD_SHARED_LIBS`); отдельно — `add_library(<name> INTERFACE)`, `add_library(<name> ALIAS <target>)`,
+  `add_library(<name> <type> IMPORTED [GLOBAL])`. `EXCLUDE_FROM_ALL` не запрещает линковать, но цель не
+  входит в `ALL`.
+- **Где применим:** `tw_core` (STATIC + свой код), `TrafficWatcher::Core` (ALIAS),
+  `TrafficWatcher::Warnings` (INTERFACE), `tw_tests_support` (STATIC, урок 8).
+- **Где неприменим:** готовый чужой `.lib` без исходников — это `IMPORTED` с `IMPORTED_LOCATION`, а не
+  `STATIC` со списком файлов, которых нет: во втором случае ошибка прилетит на build, а не на configure.
+- **Best practice:** источники — явным списком в команде, не `file(GLOB)` и не переменной из другого
+  каталога. Иначе добавленный файл не попадёт в сборку до следующего configure, а список источников
+  ребёнка перестанет жить рядом с его кодом (§1.3, строки 3).
+- **Справка middle:** имя с `::` легально только для `ALIAS` и `IMPORTED`-таргетов. Поэтому
+  `TrafficWatcher::Core` даёт ошибку configure при опечатке, а `tw_core` — задержанную ошибку линкера
+  (§2.4, тонкость 3).
+- **Проверка:** `cmake --help-command add_library`.
+
+**`target_link_libraries(<target> [<keyword>] <item>...)`** — команда, фаза generate/compile/link; в справке
+команды описаны четыре рабочие формы (см. «Формы аргументов»).
+- **Зачем:** рисует ребро графа и одновременно решает, какие требования этого ребра уедут потребителю.
+- **Формы аргументов:** keyword-форма (наша) — `PUBLIC` / `PRIVATE` / `INTERFACE` с повторами в одном
+  вызове; прямая форма `target_link_libraries(<target> <item>...)` без keyword — «transitive by default»:
+  всё, что перечислено, кладётся в `INTERFACE_LINK_LIBRARIES`, то есть ведёт себя как `PUBLIC`;
+  две legacy-формы — `LINK_PRIVATE` / `LINK_PUBLIC` и `LINK_INTERFACE_LIBRARIES`, про каждую в справке
+  сказано «This signature is for compatibility only» (`cmake --help-command target_link_libraries`).
+  `<item>` бывает именем таргета, полным путём к файлу библиотеки, обычным именем (`foo` → `-lfoo` /
+  `foo.lib`), link-флагом (начинается с `-`, но не `-l` и не `-L`), генераторным выражением `$<...>`, а
+  пер-конфигурационные варианты дают слова `debug` / `optimized` / `general`. Для флага линкера есть
+  portable-обёртка `LINKER:` (`"LINKER:-z,defs"` → `-Xlinker -z -Xlinker defs` у Clang и
+  `-Wl,-z,defs` у GCC). `<target>` обязан быть создан `add_*` и **не** может быть `ALIAS`.
+- **Где применимо:** всё, что связывает слои: `tw_app → TrafficWatcher::Core`, `tw_core → Qt::Core`,
+  тест → ядро через alias (урок 8.2).
+- **Где неприменим:** когда нужно передать **флаг компиляции**, а не зависимость — для этого
+  `target_compile_options`, а не этот вызов; линковка ради того, чтобы «прокинуть `-W`», превращает
+  флаг в часть API.
+- **Best practice:** всегда явное keyword-слово. Прямая форма без `PRIVATE/PUBLIC/INTERFACE` молча
+  означает «публично» (см. формы выше), поэтому в ревью она читается как «автор не знал, что выбрать», а
+  граница по ней не проверяется: `--graphviz` покажет ребро, но не покажет, что оно случайно публичное.
+- **Справка middle:** порядок `<item>` в строке линковки значим для статических библиотек (CMake
+  пытается вывести его из графа, но циклы и `$<TARGET_OBJECTS:...>` он не «додумывает» — см. пример в
+  справке команды); и `PUBLIC` на `OBJECT`-библиотеке ведёт себя иначе, чем на STATIC.
+- **Проверка:** `cmake --help-command target_link_libraries`.
+
+**`target_include_directories(<target> [SYSTEM] [AFTER|BEFORE] {INTERFACE|PUBLIC|PRIVATE} <dir>... [{...} <dir>...]...)`** — команда, фаза generate/compile.
+- **Зачем:** кладёт пути в `INCLUDE_DIRECTORIES` (мне) и/или `INTERFACE_INCLUDE_DIRECTORIES` (потребителю).
+- **Формы аргументов:** три keyword-слова видимости; `SYSTEM` — трактовать как системные (компилятор не
+  показывает предупреждения из них, на MSVC это влияет примерно, а не строго); `AFTER|BEFORE` — куда
+  вставлять относительно уже накопленных путей, порядок в `-I` имеет следствие: выигрывает первый
+  найденный заголовок.
+- **Где применимо:** `PUBLIC include` для публичного API, `PRIVATE src` для внутреннего,
+  `INTERFACE` — единственный допустимый вариант для `INTERFACE`-таргета.
+- **Где неприменим:** путь к Qt или к тулчейну — это `CMAKE_PREFIX_PATH`/пресет, а не include-путь;
+  путь к тестовым данным — это CTest `WORKING_DIRECTORY`, а не `-I` (урок 8, §3).
+- **Best practice:** публичный путь относительный от `${CMAKE_CURRENT_SOURCE_DIR}` и обёрнутый в
+  `$<BUILD_INTERFACE:...>`/`$<INSTALL_INTERFACE:...>`, если таргет когда-нибудь экспортируется. Иначе
+  абсолютный путь из моей сборки уедет в чужой `find_package` и перестанет существовать (§2.4, тонкость 4).
+- **Справка middle:** вызов можно повторять, он **добавляет**, а не заменяет; отдельного
+  `remove`-вызова нет — порядок задаётся `AFTER|BEFORE` и очерёдностью `add_subdirectory`.
+- **Проверка:** `cmake --help-command target_include_directories`, фактический список `-I` видно в
+  `cmake --build <dir> -- -v`.
+
+**`target_compile_features(<target> {INTERFACE|PUBLIC|PRIVATE} <feature>...)`** — команда, фаза generate/compile.
+- **Зачем:** заявляет требование к языку/компилятору; CMake сам подставляет флаг стандарта и, где нужно,
+  определяет, умеет ли компилятор фичу (по встроенной таблице, не проверкой компилятора).
+- **Формы аргументов:** keyword видимости обязателен; `<feature>` двух классов — индексы стандарта
+  `cxx_std_11/14/17/20/23/26` и отдельные фичи (`cxx_concepts`, `cxx_ranges`, `cxx_consteval` …).
+  Индекс стандарта означает «не меньше», и по графу считается **максимум** (§1.5, тонкость 1).
+- **Где применимо:** `PUBLIC cxx_std_20` у ядра — потому что стандарт входит в наш API; `PUBLIC`
+  конкретной фичи там, где заголовок реально её использует.
+- **Где неприменим:** флаги компилятора, которых нет в списке фич (`/permissive-`, `-fno-omit-frame-pointer`) —
+  только `target_compile_options`; попытка выразить их здесь даст ошибку configure.
+- **Best practice:** стандарт задаётся этой командой у таргета, а не `set(CMAKE_CXX_STANDARD 20)` в
+  кэше. Глобальная переменная не участвует в графе, и из-за неё `try_compile`, тесты и чужой `3rdparty`
+  получают один и тот же стандарт, даже когда им нужен другой.
+- **Справка middle:** `cxx_std_*` распространяются на потребителей, одиночные фичи — нет: заявленная в
+  `.cpp` фича не гарантирует потребителю ничего, поэтому «у меня компилируется» не равно «у него
+  компилируется». Полный список известных CMake фич — в `cmake --help-properties` (раздел Target Properties,
+  `CXX_COMPILE_FEATURES`; там же `cxx_std_98…26`), а то, что знает **твой компилятор**, видно в
+  `CMAKE_CXX_COMPILE_FEATURES` уже после configure.
+- **Проверка:** `cmake --help-command target_compile_features`, `cmake --help-manual cmake-compile-features`.
+
+---
+
 ## 2. `PRIVATE` / `PUBLIC` / `INTERFACE`: ключевые слова как вопрос про API
 
 ### 2.1 Механика
@@ -288,6 +389,57 @@ configure появится сразу, и она про область види�
 пакета нельзя, поэтому правило фиксируем сразу: **в `INTERFACE_*` всё, что не является частью API,
 оборачивается в `$<BUILD_INTERFACE:>`,** и в этом уроке это относится к флагам, но не к
 `cxx_std_20` и не к include-путям — они как раз часть обязательства.
+
+### 2.5 Паспорт конструкций раздела
+
+**`PRIVATE` / `PUBLIC` / `INTERFACE`** — keyword-аргумент команд `target_*`, не самостоятельные сущности.
+- **Зачем:** выбирают, в какое из двух свойств ляжет значение: `<PROP>` (мне) и `INTERFACE_<PROP>`
+  (потребителю). `PRIVATE` — только первое, `PUBLIC` — оба, `INTERFACE` — только второе.
+- **Формы аргументов:** в keyword-сигнатуре `target_link_libraries`/`target_include_directories` слова
+  можно повторять в одном вызове (`PUBLIC a PRIVATE b`) — это две записи, а не конфликт; в
+  `target_compile_features` одно слово на весь вызов; alias годится как `<item>` (линкуются **по** нему),
+  но не как `<target>`: `target_link_libraries` прямо запрещает `ALIAS` в аргументе таргета, а
+  `set_target_properties` — «Alias Targets do not support setting target properties».
+- **Где применимо:** выбор всегда по одному признаку — «входит ли в мой открытый заголовок»: да →
+  `PUBLIC`, нет → `PRIVATE`, я сам лишь переносчик чужих свойств → `INTERFACE`.
+- **Где неприменимо:** на `add_executable`-таргете `PUBLIC` формально разрешён и почти всегда бесполезен:
+  на исполняемый файл никто не линкуется, поэтому его публичные требования — мёртвый код, кроме случаев,
+  когда таргет используется через `$<TARGET_FILE:…>` в тесте или deploy-скрипте.
+- **Best practice:** не «PUBLIC на всякий случай». Цена: правка любого заголовка в этой библиотеке
+  вызывает ре-билд всех потребителей, а `--graphviz` перестаёт отличать API от реализации (§1.3,
+  строка 2). Проверка на ревью: `INTERFACE_<PROP>` у `tw_core` не должен содержать `Qt::Quick`.
+- **Справка middle:** `PUBLIC` на статической библиотеке и на `OBJECT`-библиотеке означают разный
+  результат у потребителя (OBJECT отдаёт объектные файлы, а не архив), поэтому перенос `tw_core` из
+  STATIC в OBJECT меняет не скорость сборки, а содержимое линковочной строки.
+- **Проверка:** `cmake --help-property INTERFACE_INCLUDE_DIRECTORIES`, `cmake --help-property-list`.
+
+**`set_target_properties(<targets>... PROPERTIES <prop1> <value1> [<prop2> <value2>] ...)`** и
+**`set_property({GLOBAL|DIRECTORY|TARGET|FILE_SET|SOURCE|INSTALL|TEST|CACHE} [APPEND] [APPEND_STRING] PROPERTY <name> [<value>...])`**
+— команды, фаза configure.
+- **Зачем:** прямая запись свойства, когда отдельной `target_*`-команды для него нет (у `INTERFACE_*`-вариантов
+  её часто нет).
+- **Формы аргументов:** у `set_property` первым аргументом выбирается **область** — `GLOBAL` (без имени),
+  `DIRECTORY [<dir>]`, `TARGET <targets>...`, `FILE_SET <fs>... TARGET <target>`, `SOURCE <src>...`,
+  `INSTALL <file>...`, `TEST <test>... [DIRECTORY <dir>]`, `CACHE <entry>...`; дальше необязательные
+  `APPEND` (дописывает **элементы списка**, пустые значения игнорирует) или `APPEND_STRING` (склеивает
+  **строку**, результат — одна строка, а не список). Это разные операции, и путать их дорого.
+- **Где применимо:** `POSITION_INDEPENDENT_CODE ON` (§1.5, тонкость 2),
+  `INTERFACE_POSITION_INDEPENDENT_CODE ON` у `INTERFACE`-таргета, `OUTPUT_NAME`, `FOLDER`, в уроке 8 —
+  `set_property(TEST ... PROPERTY LABELS ...)`.
+- **Где неприменимо:** там, где есть специализированная `target_*`-команда: include-пути, определения, флаги
+  и линковка пишутся своими командами, потому что только они понимают `PUBLIC/PRIVATE/INTERFACE`.
+  `set_target_properties(... PROPERTY INCLUDE_DIRECTORIES ...)` обходит модель распространения и в ревью
+  считается обходным путём (в CMake на это есть отдельный `CMP`-policy).
+- **Best practice:** если всё-таки пишешь свойство напрямую — только парами `INTERFACE_*`/`<PROP>`,
+  чтобы видимая часть совпадала с тем, что сделала бы `target_*`-команда, и всегда с комментарием, почему
+  специализированной команды не хватило.
+- **Справка middle:** области `GLOBAL`/`DIRECTORY` — единственный способ задать то, чего нет в графе
+  таргетов, и в нашей сборке два рабочих примера: глобальное `USE_FOLDERS` (в документации прямо — «The
+  global property ``USE_FOLDERS``») и директорное `TEST_INCLUDE_FILES` («this directory property», пишется
+  как `set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES <script>)`, урок 8). Следствие: такие
+  свойства не наследуются таргетами и потому не защищены ревью графа — их видно только чтением файла.
+- **Проверка:** `cmake --help-command set_target_properties`, `cmake --help-command set_property`,
+  список свойств — `cmake --help-property-list`, области — `cmake --help-properties`.
 
 ---
 
@@ -439,8 +591,72 @@ $<QT_DEPLOY_QML_IMPORT_PATH>  $<QT_QML_SOURCE_FILES_WITH_PREFIX:/qt/qml>
 строка — в `if()`, `string()`, `list()` они остаются текстом (`if("$<CONFIG:Debug>" STREQUAL "Debug")`
 — всегда ложь). Поэтому граница из §4.2 проходит не по стилю, а по фазе: знание нужно на configure —
 только `if()` и переменные; знание про конкретную сборку — только выражение. Полный список классов
-выражений — в `cmake-generator-expressions(7)` (`cmake --help-property-list` их не показывает), и этот
-раз документ лучше один раз прочитать целиком, чем искать по симптому.
+выражений — `cmake --help-manual cmake-generator-expressions` (это руководство в твоём cmake, не в чужом;
+`--help-property-list` выражения не показывает), и этот раз документ лучше один раз прочитать целиком,
+чем искать по симптому.
+
+### 4.5 Паспорт конструкций раздела
+
+**`$<...>` — генераторное выражение**: не команда, а подстановка **внутри значения** свойства или аргумента;
+вычисляется на generate-фазе для пары «таргет × конфигурация» (и × язык, где это значимо).
+- **Зачем:** перенести условие из момента configure в момент генерации — единственный способ получить
+  корректные флаги на multi-config генераторе (§4.1).
+- **Формы аргументов:** две формы условия — `$<condition:true_string>` (пустая строка, если условие `0`) и
+  `$<IF:condition,true,false>` (с 3.28 не вычисляет ненужную ветку); не-`0/1` значение оборачивают в
+  `$<BOOL:…>`; логика — `$<AND:>`, `$<OR:>`, `$<NOT:>`. Классы из справки (240 выражений в `genex::`):
+  сравнения числовые/версионные/строковые/списковые/путевые, строковые запросы и преобразования
+  (`$<JOIN:…>`, `$<COMMA>`), `$<CONFIG:…>`, платформа и компилятор (`$<PLATFORM_ID:…>`,
+  `$<CXX_COMPILER_ID:…>`, `$<COMPILE_LANGUAGE:…>`, `$<LINK_LANGUAGE:…>`), контексты компиляции/линковки,
+  мета-данные источников, file set и таргетов (`$<TARGET_FILE:…>`, `$<TARGET_PROPERTY:…>`), и
+  `$<BUILD_INTERFACE:…>`/`$<INSTALL_INTERFACE:…>`. Выражение с пробелом, `;` или переводом строки
+  **обязательно** целиком в кавычках, иначе оно распаздится на аргументы и перестанет быть выражением.
+- **Где применимо:** в свойствах таргета (`LINK_LIBRARIES`, `INCLUDE_DIRECTORIES`, `COMPILE_OPTIONS`,
+  `COMPILE_DEFINITIONS` — то есть в аргументах `target_*`-команд), в `install(...)`, в `add_custom_command`
+  (там же нужны `VERBATIM` и `COMMAND_EXPAND_LISTS`), в свойствах теста (урок 8).
+- **Где неприменимо:** там, где нужен результат **сейчас** — в `if()`, `string()`, `list()`, `message()`.
+  В справке это сформулировано прямо: результат выражения нельзя посмотреть через `message()`, потому что
+  оно ещё не вычислено на момент чтения файла.
+- **Best practice:** условие оборачивает аргумент **целиком** (§4.4, тонкость 5); сложные конструкции
+  собираются в переменную с говорящим именем (`set(is_gnu "$<CXX_COMPILER_ID:GNU>")`), а не в одну
+  строку через три вложенных `$<…>`; перенос выражения на несколько строк с отступами — типичная
+  невидимая ошибка (отступ попадает в результат).
+- **Справка middle:** условное выражение при ложном условии даёт **пустую строку**, а пустые элементы
+  списка CMake игнорирует (для определений это в справке команды сформулировано буквально:
+  «Empty items are ignored») — на этом держится весь приём с `$<$<CONFIG:Debug>:…>` и ровно поэтому
+  висячий `-Xlinker` из тонкости 5 так дорог (§4.4, мини-практика 4 это показывает); `$<GENEX_EVAL:expr>`
+  вычисляет текст, который пришёл уже как выражение (например из переменной), а `$<TARGET_GENEX_EVAL:tgt,expr>`
+  делает то же в контексте другого таргета — обычный `$<…>` такого не умеет.
+- **Проверка:** `cmake --help-manual cmake-generator-expressions`; два официально предложенных способа
+  отладки — `add_custom_target(genexdebug COMMAND ${CMAKE_COMMAND} -E echo "$<...>")` и
+  `file(GENERATE OUTPUT filename CONTENT "$<...>")`. Про `file(GENERATE)` знай три вещи: файл создаётся
+  только на generate-фазе (после возврата команды файла ещё нет), один `OUTPUT` может быть назван
+  не более чем одним вызовом, и timestamp обновляется лишь при изменившемся содержимом.
+
+**`target_compile_options(<target> [BEFORE] {INTERFACE|PUBLIC|PRIVATE} <item>... [{...} <item>...]...)`**
+— команда, фаза generate/compile.
+- **Зачем:** кладёт флаги компилятора в `COMPILE_OPTIONS` (мне) и/или `INTERFACE_COMPILE_OPTIONS`
+  (потребителю) — это единственное место, где живут флаги, участвующие в графе.
+- **Формы аргументов:** keyword-слова видимости повторяемы; `BEFORE` вставляет флаги **перед** уже
+  накопленными (важно, когда позже указанный флаг должен побеждать); `<item>` — обычный флаг,
+  `SHELL:`-группа или выражение.
+- **Где применимо:** наш `TrafficWatcher::Warnings` (§4.3) с `$<$<CXX_COMPILER_ID:MSVC>:/W4>` и
+  `$<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall;-Wextra>`; per-config флаги вида
+  `$<$<CONFIG:Debug>:-fno-omit-frame-pointer>`.
+- **Где неприменимо:** определения и include-пути — для них справка команды прямо рекомендует
+  `target_compile_definitions()` и `target_include_directories()`; требование к стандарту —
+  `target_compile_features()`; флаги **линкера** — `target_link_options()` или `LINKER:`-обёртка в
+  `target_link_libraries`, а не этот вызов.
+- **Best practice:** не `add_compile_options()` на верхнем уровне: это директорное свойство, и оно
+  доедет до каждого таргета ниже по дереву, включая чужой `3rdparty` (§1.3, строка 1). И помни про
+  дедупликацию: повторяющийся флаг CMake схлопывает, и из-за этого распадаются группы опций —
+  «`-option A -option B` становится `-option A B`»; пару держит вместе `SHELL:`
+  (`"SHELL:-Xlinker -debug"`), который разбирается по правилам `separate_arguments(UNIX_COMMAND)`.
+- **Справка middle:** команда добавляет опции **всем языкам** таргета — чтобы флаг уехал только в C++
+  (и не сломал, например, `rc`/MOC-обработку), оборачивают в `$<COMPILE_LANGUAGE:CXX>`; `SHELL:`-элементы
+  при этом нельзя отдавать на растущую дедупликацию «на всякий случай» — два одинаковых `SHELL:`-флага
+  это уже не дубли, а намерение.
+- **Проверка:** `cmake --help-command target_compile_options`, фактический набор флагов —
+  `cmake --build <dir> -- -v` или `compile_commands.json` из пресета.
 
 ---
 
@@ -448,10 +664,13 @@ $<QT_DEPLOY_QML_IMPORT_PATH>  $<QT_QML_SOURCE_FILES_WITH_PREFIX:/qt/qml>
 
 ### 5.1 Механика
 
-Пресет — именованный набор параметров одной из четырёх операций (configure/build/test/install) в файле
-`CMakePresets.json` в корне проекта. Вызов: `cmake --preset <имя>`, `cmake --build --preset <имя>`,
-`ctest --preset <имя>`, `cmake --install --preset <имя>`. Схема версионирована; актуальная для нас — v6
-(проверь поддержку своей версии: `cmake --help-presets`, и версию, которую понимает CLion 2026.1).
+Пресет — именованный набор параметров одной из пяти операций: configure, build, test, **package** (CPack) и
+workflow. Вызов: `cmake --preset <имя>`, `cmake --build --preset <имя>`, `ctest --preset <имя>`,
+`cpack --preset <имя>`, `cmake --workflow --preset <имя>`. Отдельно заметь: **install-пресета не существует** —
+`cmake --install` опции `--preset` не принимает (проверка: `cmake --install` без аргумента печатает список
+опций). Схема файла версионирована; твой CMake 4.3.2 понимает `version` до **11** включительно, а v6 — это
+нижняя граница, с которой появились package- и workflow-пресеты (проверка: `cmake --help-manual cmake-presets`,
+раздел Versions; ставь ту версию, которую понимают и CMake, и CLion 2026.1).
 
 ```jsonc
 {
@@ -517,6 +736,75 @@ MSBuild-генераторов поддержка появилась недав�
 configure-пресет с `CMAKE_CXX_STANDARD=17` и второй, наследующий его, с `20`, и посмотри в
 `build/<name>/CMakeCache.txt`, какое значение победило и почему (ответ: дочерний `cacheVariables`
 перезаписывает родительский, потому что наследование — это слияние словарей, а не «кто первый сказал»).
+
+### 5.5 Паспорт конструкций раздела
+
+**`CMakePresets.json` / `CMakeUserPresets.json`** — JSON-файл в корне проекта; схема версионирована,
+`version` 1…11 на этом CMake 4.3.2.
+- **Зачем:** положить знание о **тулчейне и окружении прогона** (генератор, компилятор, пути, флаги
+  конфигурации) в файл, который читают CLI, IDE и CI, вместо трёх разных мест с тремя наборами флагов.
+- **Формы аргументов:** корневой объект — `version` (обязателен), `cmakeMinimumRequired`, `include`
+  (v4+), `vendor`, `$schema` (v8+), `$comment` (v10+, комментарии легальны только так), и пять массивов
+  пресетов: `configurePresets`, `buildPresets`, `testPresets`, `packagePresets` и `workflowPresets`
+  (последние два — с v6). Поля configure-пресета, которые нам реально нужны: `name`, `inherits`,
+  `hidden`, `displayName`/`description`, `generator`, `architecture`/`toolset`, `binaryDir`, `installDir`,
+  `toolchainFile`, `cacheVariables`, `environment`, `warnings`/`errors`, `condition` (v3+), `trace` (v7+),
+  `graphviz` (v10+). Макросы: `${sourceDir}`, `${sourceParentDir}`, `${sourceDirName}`, `${presetName}`,
+  `${userDir}`, `${hostSystemName}` (v3+), `${fileDir}` (v4+), `${pathListSep}` и `${dollar}` (v5+),
+  `$env{VAR}` и `$penv{VAR}` (процессное окружение).
+- **Где применим:** всё, что различается **между прогонами**, но не между таргетами: наш
+  `win-msvc` / `win-mingw` / `ci-*`, `BUILD_TESTING`, `CMAKE_PREFIX_PATH`, sanitizer-пресет, `toolchainFile`
+  для модуля 12.
+- **Где неприменим:** (а) install-операция — `cmake --install` не принимает `--preset` (всего пять видов
+  пресетов, install-пресета нет); (б) всё, что зависит от **таргета**, а не от прогона: `PRIVATE`/`PUBLIC`,
+  требования, флаги конкретного кода — это `CMakeLists.txt`, и пресетом это не переопределить;
+  (в) секреты: `--list-presets` печатает только имена пресетов, но `cacheVariables` и `environment`
+  переезжают в `CMakeCache.txt` и в логи configure — то есть в файл, который нельзя коммитить.
+- **Best practice:** общий файл в git, личное — в `CMakeUserPresets.json` и в `.gitignore` (в справке это
+  сформулировано прямо: «`CMakeUserPresets.json` should NOT be checked in»); база `hidden: true` +
+  `inherits`, а не копипаст; `binaryDir` обязательно с `${presetName}`, иначе пресеты делят один кэш и
+  второй configure начинает ругаться на смену генератора.
+- **Справка middle:** `CMakeUserPresets.json` **неявно включает** `CMakePresets.json` во всех версиях схемы —
+  даже без поля `include`, поэтому личные пресеты наследуют общие «бесплатно», но направление строго одно:
+  пресеты из `CMakePresets.json` **не могут** наследовать что-либо из `CMakeUserPresets.json` (в справке это
+  сказано прямым текстом), и наследовать можно только из того же файла или из файлов, включённых прямо либо
+  косвенно; циклы `include` запрещены; в поле `include` макросы раскрываются с v7 и только `$penv{}`
+  (полный набор — с v9, кроме `$env{}` и пресет-специфичных макросов вроде `${presetName}`). Всё это —
+  ошибки не JSON-синтаксиса, а графа наследования, поэтому IDE их видит только после configure, не при
+  чтении файла.
+- **Проверка:** `cmake --help-manual cmake-presets` — разделы Format (поля), Versions (что в какой версии
+  появилось), Macro Expansion, Includes; там же указан machine-readable `presets/schema.json` (тот вариант
+  схемы, что понимает **твой** cmake).
+
+**`cmake --preset <имя>` / `cmake --build --preset <имя>` / `ctest --preset <имя>` /
+`cpack --preset <имя>` / `cmake --workflow --preset <имя>`** — CLI-формы одного и того же механизма.
+- **Зачем:** одна строка вместо набора `-D`/`-G`; прогон становится повторяемым без знания истории
+  терминала автора.
+- **Формы аргументов:** в configure-режиме — `--preset <имя>|--preset=<имя>`, `--list-presets[=<type>]`
+  со значениями `configure`, `build`, `test`, `package`, `all` (без значения по умолчанию `configure`),
+  `--fresh` («Configure a fresh build tree, removing any existing cache file»), `--workflow [<options>]`,
+  `-B/-S`, `-G`, `-D`. В build-режиме — `--preset`, `--list-presets` **без значения** (на этом CMake
+  `--list-presets=build` — «Unknown argument»), `--parallel [<jobs>]`/`-j`, `-t/--target`, `--config <cfg>`,
+  `--clean-first`, `--resolve-package-references={on|only|off}`, `-v/--verbose` и `-- <native-options>`.
+  `ctest --preset`, `cpack --preset`/`cpack --list-presets`, `cmake --workflow --preset <имя>`.
+- **Где применимо:** локальная сборка, DoD из §7.3, CI-шаги (модуль 12) и workflow-пресет как точка входа
+  для «собрать → протестировать → упаковать» (модуль 15).
+- **Где неприменимо:** там, где нужен разовый override без правки файла, — `cmake -S . -B build/tmp -G … -D…`,
+  но помни: смешивать пресет и ручной `-D` в одном прогоне можно, а вот ожидать, что они попадут в одну
+  build-директорию, нельзя. И туда, где знание про **конкретную цель**: `cmake --build <dir> --target <t>
+  --config <c>` работает и без пресета.
+- **Best practice:** DoD = «удалил `build/` → прогон зелёный из пресетов». Если после правки
+  `CMakePresets.json` «ничего не изменилось» — это кэш: `--fresh` или удаление директории, а не
+  пересоздание файла (см. §10, последняя строка).
+- **Справка middle:** пресет может быть валидным, но **невыполнимым**, и CLI про это молчит: `hidden: true`
+  снимает его из `--list-presets`, а `condition: { "type": "equals", "lhs": "${hostSystemName}",
+  "rhs": "Windows" }` делает пресет отключённым на чужой ОС (условие поддерживает и `notEquals`, `inList`,
+  `anyOf`/`allOf`/`not`, `null` = «включён, но детьми не наследуется»). Отсюда правило для CI (урок 15):
+  отдельный шаг `cmake --list-presets` до сборки — иначе «красный» прогон начнётся с сообщения о том, что
+  пресета нет, а не с полезной ошибки компиляции. И вторая деталь, уже про workflow: шаг обязан быть
+  `configure` первым, все остальные — `build`/`test`/`package` с тем же `configurePreset`.
+- **Проверка:** `cmake --help` (режимы и опции), `cmake --build <dir> --help` (опции build-режима),
+  `ctest --help`, `cpack --help`, `cmake --help-manual cmake-presets`.
 
 ---
 
@@ -671,7 +959,7 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
 
 | Симптом | Настоящая причина | Что делать |
 |---|---|---|
-| CLion не показывает пресеты | версия схемы `version` выше, чем понимает IDE | `cmake --help-presets`; оставить версию, поддерживаемую и CMake, и CLion |
+| CLion не показывает пресеты | версия схемы `version` выше, чем понимает IDE | `cmake --help-manual cmake-presets` (раздел Versions) и `cmake --list-presets`; оставить версию, поддерживаемую и CMake, и CLion |
 | Собрано, но тест падает: `qrc:/... no such file` / QML-импорт не найден | фаза **test**: рабочая директория и окружение не те, что при запуске из IDE | свойства теста `WORKING_DIRECTORY`, `ENVIRONMENT`; вернёмся в 8.3 |
 | `tw_app` линкует `Qt::Quick`, хотя я его не просил | `PUBLIC`-требование где-то выше по графу | `--graphviz`, искать ребро в `tw_core`; править на `PRIVATE` |
 | На MSVC «Debug-флаги» не применяются | `CMAKE_BUILD_TYPE` пуст на multi-config генераторе | `$<$<CONFIG:Debug>:...>` вместо `if()` (§4.1) |
@@ -688,8 +976,11 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
 
 ## 12. Что читать
 
-- CMake docs: «Understanding CMake from the Ground Up», `cmake-build-system(7)`, `target_link_libraries(7)`,
-  `cmake-generator-expressions(7)`, `cmake-presets(7)`.
+- CMake docs: «Understanding CMake from the Ground Up», и руководства из твоего же cmake —
+  `cmake --help-manual cmake-buildsystem`, `cmake-generator-expressions`, `cmake-presets`,
+  `cmake-policies`, `cmake-variables`, `ctest` (список: `cmake --help-manual-list`). Запомни полку целиком:
+  там же есть `cmake-compile-features` (урок 3.1 про concepts/ranges), `cmake-toolchains` (урок 1.2),
+  `cmake-packages` (модуль 2 про `find_package`) и `cmake-qt`.
 - Kitware **Effective CMake** (55 items) — прочитать целиком один раз до модуля 3.
 - KDAB: «CMake: best practices for a readable and maintainable project structure».
 - Qt: «Creating CMake Projects», `qt_add_qml_module`, `QML_ELEMENT`, **What's New in Qt 6.10** → раздел
@@ -709,5 +1000,32 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
 | Что появится в коде | `CMakeLists.txt`, `CMakePresets.json`, `include/trafficwatcher/core/Mode.hpp`, `src/core/mode.cpp`, `src/app/main.cpp`, `tests/unit/test_core_smoke.cpp` с одним `add_test` |
 | Приложение | вход — пустое дерево; выход — собираемый и запускаемый `tw_app` вместе с `tw_core`, первый зелёный тест (§0.2). Строительные `Mode.hpp`/`main.cpp`/smoke-тест имеют записанный срок жизни: уроки 6.1 и 2.1 |
 | Файл ответов | [`answers/01-cmake-target-model.md`](../answers/01-cmake-target-model.md) — 17 вопросов, ответы вписываю я |
+| Справка по конструкциям | §14 — десять карточек урока в одной таблице: сигнатура, аргументы, граница применения, best practice, чем проверить |
 | Следующий урок | **1.2** — матрица пресетов (`ОС × компилятор × конфигурация`), `toolchainFile`, и почему один и тот же пресет читают CLion и CI |
 | Что не делаем раньше времени | QML, `qt_add_qml_module`, классы домена, CPack, CI |
+
+---
+
+## 14. Справка урока: конструкции
+
+Формат повторного пробега: 5 минут по таблице перед тем, как сесть за задание или ревью. Все сигнатуры
+сверены на CMake 4.3.2 (`cmake --help-command`, `cmake --help-manual`); подробности — в карточках
+§1.6, §2.5, §4.5, §5.5.
+
+| Конструкция | Что это | Ключевые аргументы | Где применима | Best practice | Тонкость | Чем проверить |
+|---|---|---|---|---|---|---|
+| `add_library(<name> [<type>] [EXCLUDE_FROM_ALL] <src>...)` | команда: вершина графа-библиотеки | `STATIC/SHARED/MODULE/OBJECT`, `INTERFACE`, `ALIAS`, `IMPORTED [GLOBAL]` | `tw_core`, alias, `TrafficWatcher::Warnings` | источники явным списком в команде | имя с `::` легально только `ALIAS`/`IMPORTED` → опечатка ловится на configure | `cmake --help-command add_library` |
+| `target_link_libraries(<target> [<kw>] <item>...)` | команда: ребро графа + выбор, что уедет потребителю | `PUBLIC/PRIVATE/INTERFACE`; прямая форма = «transitive by default» | все связи слоёв, тест → ядро по alias | всегда явное keyword-слово | `<target>` не может быть `ALIAS`; порядок `<item>` значим для STATIC | `cmake --help-command target_link_libraries` |
+| `target_include_directories(<target> [SYSTEM] [AFTER|BEFORE] <kw> <dir>...)` | команда: пути `-I` мне и/или потребителю | `SYSTEM`, `AFTER|BEFORE`, три keyword | `PUBLIC include`, `PRIVATE src`, `INTERFACE` у header-only | публичный путь относительный и в `$<BUILD_INTERFACE:…>`/`$<INSTALL_INTERFACE:…>` | вызов **добавляет**, `remove`-вызова нет; в `-I` выигрывает первый найденный заголовок | `cmake --build <dir> -- -v` |
+| `target_compile_features(<target> <kw> <feature>...)` | команда: требование к языку, а не флаг | `cxx_std_11…26`, одиночные фичи `cxx_concepts`, `cxx_ranges` | `PUBLIC cxx_std_20` у ядра | стандарт задаёт таргет, а не `CMAKE_CXX_STANDARD` в кэше | в графе побеждает **максимум**; одиночные фичи не распространяются | `cmake --help-command target_compile_features` |
+| `PRIVATE` / `PUBLIC` / `INTERFACE` | keyword-аргумент `target_*`, не сущность | выбор по признаку «входит в открытый заголовок» | все `target_*`-команды | не «PUBLIC на всякий случай» | `PUBLIC` на `add_executable` — мёртвый код; на OBJECT даёт другой результат у потребителя | `cmake --help-property INTERFACE_INCLUDE_DIRECTORIES` |
+| `set_target_properties(... PROPERTIES …)` / `set_property(<область> …)` | команды: прямая запись свойства | области `GLOBAL/DIRECTORY/TARGET/FILE_SET/SOURCE/INSTALL/TEST/CACHE`; `APPEND` vs `APPEND_STRING` | `POSITION_INDEPENDENT_CODE`, `OUTPUT_NAME`, свойства теста | писать напрямую только парами и с комментарием «почему не было `target_*`» | глобальные/директорные свойства (`USE_FOLDERS`, `TEST_INCLUDE_FILES`) не наследуются таргетами и не видны в графе | `cmake --help-properties` |
+| `$<...>` | генераторное выражение: значение свойства, вычисляемое на generate | `$<cond:true>`, `$<IF:>`, `$<BOOL:>`, `$<AND/OR/NOT:>`, `$<CONFIG:>`, `$<TARGET_FILE:>`, `$<COMPILE_LANGUAGE:…>` | флаги/определения/пути, зависящие от config, компилятора, ОС | условие оборачивает аргумент **целиком**; длинное — через именованную переменную | результат нельзя увидеть `message()`; пустой элемент списка игнорируется; `SHELL:` держит группу опций | `cmake --help-manual cmake-generator-expressions` |
+| `target_compile_options(<target> [BEFORE] <kw> <item>...)` | команда: флаги компилятора в графе | `BEFORE`, `SHELL:`, `$<…>` внутри элемента | `TrafficWatcher::Warnings`, per-config флаги | не `add_compile_options()` на верхнем уровне | опции добавляются **всем языкам** таргета → `$<COMPILE_LANGUAGE:CXX>`; дедупликация ломает группы флагов | `cmake --help-command target_compile_options` |
+| `CMakePresets.json` / `CMakeUserPresets.json` | JSON-файл корневого проекта, схема `version` 1…11 | `configurePresets/buildPresets/testPresets/packagePresets/workflowPresets`; `inherits`, `hidden`, `cacheVariables`, `environment`, `vendor`, `toolchainFile`, `condition` | матрица «ОС × компилятор × config», CI, IDE | общее в git, личное в `CMakeUserPresets.json` + `.gitignore`; `binaryDir` с `${presetName}` | user-файл неявно включает общий; обратно наследовать нельзя; IDE не видит ошибки графа наследования до configure | `cmake --help-manual cmake-presets` |
+| `cmake --preset` / `cmake --build --preset` / `ctest --preset` / `cpack --preset` / `cmake --workflow --preset` | CLI-формы пяти видов пресетов | `--list-presets[=configure|build|test|package|all]` (в build-режиме — без значения), `--fresh`, `-- `, `-t`, `--config` | локальный прогон, DoD, CI, workflow-сборка | после правки файла — `--fresh`, иначе виноват кэш | install-пресета не существует: `cmake --install --preset` — несуществующая команда | `cmake --help`, `cmake --build <dir> --help` |
+
+Три вещи из этой таблицы чаще всего спрашивают в формате «напиши по памяти»: допустимые формы
+`target_link_libraries` (чем прямая форма отличается от keyword), области `set_property` и чем `APPEND`
+отличается от `APPEND_STRING`, и какие `$<…>` нельзя положить в `if()`. Если по любой строке есть сомнение —
+карточка в соответствующем разделе урока, проверка — последней колонкой.
