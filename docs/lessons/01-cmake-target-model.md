@@ -39,6 +39,10 @@
 и справкой middle с командой проверки. В конце урока все карточки свёрнуты в одну таблицу
 (§14) — по ней удобно вспоминать урок перед ревью.
 
+У задания тоже два слоя: §7.2 — что должно получиться в репозитории и почему именно так, §7.3 — прямые
+шаги «создай файл, в нём должно быть …», где каждый шаг закрывается командой проверки, а не ощущением,
+что написано верно.
+
 Термины, которые используются дальше без перевода:
 
 | Термин | Определение |
@@ -99,7 +103,7 @@ cmake --help-property-list         # все свойства; найди INCLUDE
 | Строительный артефакт | Зачем он нужен сегодня | Где он перестаёт быть нужным |
 |---|---|---|
 | `include/trafficwatcher/core/Mode.hpp`: `enum class Mode { Solid, Flashing }` + `constexpr auto label(Mode) -> std::string_view` | даёт `tw_core` содержимое; `label()` — что утверждать в первом тесте; `constexpr` — заодно проверяет, что `cxx_std_20` действительно применился | **урок 6.1**: реальная стейт-машина M1 (`TrafficLightState`, переходы, `TickEngine`). Удаление файла — пункт задания того урока |
-| `src/app/main.cpp`: `QGuiApplication` + пустой `QQmlApplicationEngine` без `.qml` | демонстрирует распространение требований: `tw_app` получает `Qt::Core` бесплатно и не получает `Qt::Concurrent` | **урок 2.1**: `qt_add_qml_module` + `QML_ELEMENT`, появляется `main.qml` и модуль становится настоящим |
+| `src/app/main.cpp`: `QGuiApplication` + один вызов функции `tw_core` + `app.exec()` (сам `QQmlApplicationEngine` — с урока 2.1, вместе с `Qt::Quick`: без него ребро `tw_app → tw_core` было бы фиктивным) | демонстрирует распространение требований: `tw_app` получает `Qt::Core` бесплатно и не получает `Qt::Concurrent` | **урок 2.1**: `qt_add_qml_module` + `QML_ELEMENT`, появляется `main.qml` и модуль становится настоящим |
 | `tests/unit/test_core_smoke.cpp`: проверка, что `label(Mode::Solid)` вернула ожидаемое | первый зелёный лот CTest и первый `add_test` в контейнере из п.9 | **урок 8.2**: QTest-механика, data-driven-таблицы; smoke-тест заменяется тестами домена |
 
 Правило на весь курс: **срок жизни строительного кода записан в момент его появления**. Если через урок
@@ -131,7 +135,8 @@ CMake строит направленный граф. Вершины — тар�
 Каждый таргет несёт список свойств, часть которых помечена как `INTERFACE_*` — то есть «это нужно не только
 мне, но и тому, кто от меня зависит».
 
-Вот канонический минимум (сниппет для чтения — в проект ты напишешь его сам в §7.2):
+Вот канонический минимум (сниппет для чтения — в проект ты напишешь его сам: требования в §7.2,
+порядок создания в шагах 5–6 из §7.3):
 
 ```cmake
 add_library(tw_core STATIC engine.cpp states.cpp)
@@ -787,7 +792,7 @@ configure-пресет с `CMAKE_CXX_STANDARD=17` и второй, наслед�
   `--list-presets=build` — «Unknown argument»), `--parallel [<jobs>]`/`-j`, `-t/--target`, `--config <cfg>`,
   `--clean-first`, `--resolve-package-references={on|only|off}`, `-v/--verbose` и `-- <native-options>`.
   `ctest --preset`, `cpack --preset`/`cpack --list-presets`, `cmake --workflow --preset <имя>`.
-- **Где применимо:** локальная сборка, DoD из §7.3, CI-шаги (модуль 12) и workflow-пресет как точка входа
+- **Где применимо:** локальная сборка, DoD из §7.4, CI-шаги (модуль 12) и workflow-пресет как точка входа
   для «собрать → протестировать → упаковать» (модуль 15).
 - **Где неприменимо:** там, где нужен разовый override без правки файла, — `cmake -S . -B build/tmp -G … -D…`,
   но помни: смешивать пресет и ручной `-D` в одном прогоне можно, а вот ожидать, что они попадут в одну
@@ -846,7 +851,9 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
 
 ## 7. Задание
 
-Код пишешь сам; я ревьюю. Порядок важен: сначала окружение, потом файлы.
+Код пишешь сам; я ревьюю. Порядок важен: сначала окружение, потом файлы. Разделы устроены так:
+§7.1–§7.2 — что должно получиться и почему именно так; §7.3 — прямые шаги по файлам, в том порядке, в
+котором ошибка остаётся однослойной; §7.4 — приёмка.
 
 ### 7.1 Окружение
 
@@ -887,12 +894,217 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
    test-пресет его подхватывает. Структура `tests/` — по [уроку 8](08-testing-strategy.md) §3; новые папки
    появляются только вместе с тестом в них.
 
-### 7.3 Definition of Done
+### 7.3 Прямые шаги: файл за файлом
+
+§7.2 отвечает на «что должно получиться и почему именно так», этот раздел — на «в каком порядке это
+создаётся руками». Порядок выбран по одному признаку: после каждого шага ошибка, если она появится,
+остаётся **однослойной** — сначала заголовок, потом реализация, потом граф, потом окружение, потом тест.
+Нумерация шагов своя, соответствие пунктам §7.2 указано в скобках. Готового кода здесь нет нарочно:
+фиксируется требование, по которому шаг считается закрытым, и команда проверки.
+
+Правило на все девять шагов: **не закрывай шаг без выполненной команды проверки.** С открытым шагом идти
+дальше нельзя — через шаг получишь ошибку в двух местах сразу и не поймёшь, в каком чинить.
+
+**Шаг 1 — измени `.gitignore` (п.6 §7.2).**
+
+Замерено в этом репозитории прямо сейчас: `git check-ignore -v cmake/TwTest.cmake` печатает
+`.gitignore:10:*.cmake`, то есть будущий модуль в `cmake/` действительно не попадёт в git.
+
+После правки в файле должно быть:
+- ни одной маски `*.cmake`;
+- вместо неё конкретные генерируемые имена: `*-config.cmake`, `*-config-version.cmake`
+  (`cmake_install.cmake` уже есть, строка 8);
+- `build/` (строка 4) и `CMakeUserPresets.json` (строка 33) остаются как есть: маски под них не
+  подводятся, и правка им не нужна.
+
+Проверка: `git check-ignore -v cmake/TwTest.cmake` → пусто;
+`git check-ignore -v build/x CMakeUserPresets.json` → обе строки объяснены конкретным правилом.
+
+**Шаг 2 — создай публичный заголовок ядра `include/trafficwatcher/core/Mode.hpp` (п.8 §7.2).**
+
+В файле должно быть:
+- защита от повторного включения: `#pragma once` **или** include guard. Выбери одно и перенеси выбор в
+  ADR-0002: два разных стиля по дереву — это шум в ревью, а не стиль;
+- `enum class Mode { Solid, Flashing };` — scoped-enum, не `enum` и не набор констант;
+- `constexpr auto label(Mode) -> std::string_view` (см. §0.2) — объявление и определение вместе, иначе
+  `constexpr` не участвует в проверке стандарта в этом же TU;
+- `static_assert` на результат `label` хотя бы для одного значения: одна строка, которая ломает сборку,
+  если `cxx_std_20` не применился. Это и есть ответ на вопрос «зачем ядру вообще нужен компилируемый
+  файл» (§0.2);
+- как минимум одна **non-inline** функция, чья сигнатура использует QtCore (имя и смысл выбираешь ты;
+  зафиксируй в ADR-0002). Именно она сделает ребро `tw_core → Qt::Core` настоящим, а не «на всякий
+  случай» (§1.1, пункт 4, и §2.2 про PUBLIC);
+- include'ы: `<string_view>` и ровно тот Qt-заголовок, который требуется подписями. Ни `QtGui`, ни
+  `QtQuick`, ни `<QObject>`: signals/slots появляются в уроке 6.1, а до них ядро обязано оставаться
+  headless (§0.1, первая строка таблицы);
+- первой строкой после защиты — пометка «строительный код; заменяется уроком 6.1» (пункт приёмки §7.4).
+
+Проверка без сборки: `Select-String -Path include/trafficwatcher/core/Mode.hpp -Pattern '#include'`
+→ в списке только `<string_view>` и один заголовок из QtCore, ни одного Gui/Quick.
+
+**Шаг 3 — создай реализацию ядра `src/core/mode.cpp` (п.8 §7.2).**
+
+В файле должно быть:
+- `#include "trafficwatcher/core/Mode.hpp"` — в этой форме, без `../../include/…`: путь к заголовку
+  проходит только через публичный include-путь таргета, и это первая проверка того, что требование
+  действительно приехало (§1.4, пункты 1–2);
+- реализация non-inline функции из шага 2; тело вправе использовать QtCore, но не QtGui/QtQuick;
+- если внутри появляется внутренняя зависимость (`QtConcurrent`, future, планировщик) — она законна
+  только при `target_link_libraries(tw_core PRIVATE …)` на шаге 5 и не должна просвечивать в заголовок
+  (§1.1, пункт 5);
+- никаких `main`, глобальных изменяемых переменных и `static`-одиночек: это файл библиотеки, её
+  переиспользуют тест и headless-прогон (§1.2, пункт 3).
+
+Проверка: `Select-String -Path src/core/mode.cpp -Pattern '\.\./'` → пусто;
+`Select-String -Path src/core/mode.cpp -Pattern '#include'` → первой стоит строка с
+`trafficwatcher/core/Mode.hpp`.
+
+**Шаг 4 — создай точку входа `src/app/main.cpp` (п.8 §7.2).**
+
+В файле должно быть ровно четыре вещи, в этом порядке:
+1. `QGuiApplication`, собранный из `argc`/`argv`;
+2. **один** вызов в `tw_core` (`label(...)` или функция с `QString`) и вывод результата. Без этого ребро
+   `tw_app → tw_core` фиктивно: линкер выбросит неиспользуемый код, а `deps.dot` всё равно нарисует
+   зависимость, и проверка графа перестанет что-либо значить;
+3. `return app.exec();` — event loop, который наблюдаем в приёмке;
+4. пометка «строительный код; `QQmlApplicationEngine` и QML-модуль — урок 2.1».
+
+`QQmlApplicationEngine` сегодня **не** создаётся: он требует `Qt::Quick`, а Quick в этом уроке не
+появляется ни в одном таргете (в таблице §0.2 это было указано ошибочно — исправлено).
+
+Проверка: `Select-String -Path src/app/main.cpp -Pattern 'QGuiApplication|exec\(|Quick|Qml'`
+→ `QGuiApplication` и `exec(` найдены, `Quick` и `Qml` — нет.
+
+**Шаг 5 — создай `src/CMakeLists.txt`: здесь живёт граф (п.8 §7.2).**
+
+Команды должны стоять в этом порядке, потому что требование обязано быть объявлено до того, как таргет
+уедет потребителю:
+- `add_library(tw_core STATIC core/mode.cpp)` — список источников явным списком в команде; путь
+  относительно каталога, где лежит `CMakeLists.txt`;
+- `target_compile_features(tw_core PUBLIC cxx_std_20)`;
+- `target_include_directories(tw_core PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)` —
+  абсолютный путь через `PROJECT_SOURCE_DIR`, потому что относительный `include` разрешился бы как
+  `src/include` (команда берёт путь от текущего source-директория), а `BUILD_INTERFACE` нужен, чтобы
+  этот путь не уехал в экспортируемый cmake-файл (§2.4, тонкость 4; install — урок 11);
+- `target_link_libraries(tw_core PUBLIC Qt::Core)` плюс `PRIVATE`-строка, если на шаге 3 появилась
+  внутренняя зависимость;
+- `add_library(TrafficWatcher::Core ALIAS tw_core)`;
+- `set_target_properties(tw_core PROPERTIES POSITION_INDEPENDENT_CODE ON)` с комментарием «почему»
+  (§1.5, тонкость 2);
+- `add_executable(tw_app app/main.cpp)` и
+  `target_link_libraries(tw_app PRIVATE TrafficWatcher::Core Qt::Gui)`. `Qt::Core` во второй строке не
+  перечисляется: он приходит транзитивно от ядра, и это первая реальная проверка §1.1 (7). Если
+  versionless-имена `Qt::Core`/`Qt::Gui` не объявятся — используй `Qt6::…` и запиши это в ADR-0001;
+- ничего из запрещённого: `include_directories`, `link_libraries`, `add_compile_options`,
+  `add_definitions`, `file(GLOB)`, `set(CMAKE_CXX_STANDARD …)`.
+
+Проверка (пока без сборки, синтаксис правил):
+`Select-String -Path src/CMakeLists.txt,CMakeLists.txt -Pattern '^\s*(include_directories|link_libraries|add_compile_options|add_definitions)\('`
+→ пусто. На текущем `CMakeLists.txt` из двух строк эта же команда ничего не находит — проверено, так что
+пустой вывод означает «правил нет», а не «команда сломалась».
+
+**Шаг 6 — допиши корневой `CMakeLists.txt` (п.5 и п.9 §7.2).**
+
+Сверху вниз, в этом порядке:
+- `cmake_minimum_required(VERSION 3.28)` — нижняя граница **поддерживаемого**, а не версия моей машины;
+  точное требование Qt 6.10 возьми из вывода `find_package`, а не из этого текста (п.5 §7.2);
+- `project(TrafficWatcher VERSION 0.1.0 DESCRIPTION "…" LANGUAGES CXX)` — имя = имя репозитория (§8,
+  п.1), версия = единственный источник номера для CPack (§8, п.7);
+- `find_package(Qt6 REQUIRED COMPONENTS Core Gui)` — только те компоненты, которые реально линкуются;
+  `Quick` добавится в уроке 2.1;
+- `include(CTest)` **до** `add_subdirectory(tests)`: этот модуль объявляет опцию `BUILD_TESTING` и
+  вызывает `enable_testing()` только когда она включена (проверка: `cmake --help-module CTest`). Значит,
+  `BUILD_TESTING: OFF` в пресете = тестов в проекте нет, и никакой `add_test` не поможет;
+- `add_subdirectory(src)` и `add_subdirectory(tests)` — в конце, после всех настроек;
+- никаких `set(CMAKE_*)`, кроме общепроектных, и те — до `add_subdirectory` (§1.5, тонкость 2 про
+  порядок `project()`/`set()`/`add_library()`).
+
+Проверка: `cmake -S . -B build/rootcheck` → сегодня обязана упасть (нет `CMAKE_PREFIX_PATH`, шаги 5 и 8
+ещё не закрыты). Полностью шаг 6 закрывается на шаге 7, там же и читается настоящая ошибка.
+
+**Шаг 7 — создай `CMakePresets.json` и `CMakeUserPresets.json` (п.7 §7.2).**
+
+В общем (коммитимом) файле должно быть:
+- `version` — та, которую понимают и CMake 4.3.2, и CLion 2026.1; границы читает
+  `cmake --help-manual cmake-presets`, раздел Versions (§5.1);
+- один `hidden: true` configure-пресет-база: `generator` (`Ninja Multi-Config`),
+  `binaryDir: "${sourceDir}/build/${presetName}"`, `cacheVariables` с четырьмя значениями —
+  `CMAKE_CXX_STANDARD: "20"` (страховка тулчейна, а не замена `cxx_std_20`: §1.5, тонкость 1),
+  `CMAKE_PREFIX_PATH: "$env{QT_DIR}"`, `BUILD_TESTING: "ON"`,
+  `CMAKE_EXPORT_COMPILE_COMMANDS: "ON"`;
+- два и более вызываемых configure-пресета, наследующих базу (`win-msvc` плюс второй — по п.7 §7.2),
+  каждый с `condition` по `${hostSystemName}`, чтобы пресет чужой ОС не превращал CI в «пресета нет»
+  (§5.5, «Справка middle»);
+- build-пресет на каждую конфигурацию (`configurePreset` + `configuration`) и test-пресет с
+  `output.outputOnFailure: true`; `CMAKE_BUILD_TYPE` в multi-config-пресетах **не** задаётся (§5.3,
+  третья строка таблицы);
+- `vendor` → `jetbrains.com/clion` с `toolchain`: IDE, CLI и CI читают одну запись (§5.1, пункт 7);
+- в `CMakeUserPresets.json` (не коммитится, §5.2): значение `QT_DIR` под мою копию Qt и, если нужно, моя
+  обёртка компилятора. Пути к Qt в общем файле — никогда (§5.1, пункт 4).
+
+Проверка, по порядку и с ожидаемым результатом:
+1. `cmake --list-presets` → вызываемые пресеты видны, база `hidden` — нет.
+2. `cmake --preset win-msvc` → configure зелёный; в `build/win-msvc/CMakeCache.txt` значения
+   `CMAKE_PREFIX_PATH` и `BUILD_TESTING` совпадают с пресетом. Это и есть цепочка
+   `QT_DIR → CMAKE_PREFIX_PATH → find_package` из проверки 2 (§6) без участия человека.
+3. `cmake --build --preset win-msvc-debug` → собраны `tw_core` и `tw_app`.
+4. `cmake --build build/win-msvc --target tw_app -- -v` → в команде компиляции `main.cpp` стоят
+   `/std:c++20` и путь к `include`, в команде линковки — `tw_core` и QtCore; пути к QtGui/QtQuick нет.
+5. `cmake --graphviz=build/deps.dot build/win-msvc` (если в связке с пресетом опция промолчит — прогони
+   с явным `-B`, как оговорено в приёмке) → цепочка `tw_app → tw_core → QtCore` (имя узла — ровно то,
+   которое ты написал в `target_link_libraries`), и у `tw_core` нет `Qt::Gui`/`Qt::Quick`.
+6. После любой правки пресета — `cmake --preset win-msvc --fresh`, иначе сравниваешь старый кэш
+   (§10, последняя строка).
+
+Честная граница: пункты 2–5 этой проверки исполняются только после того, как закрыт п.1 §7.1 (Qt 6.10.2,
+MSVC 2022, Ninja). На этой машине сегодня проверяется лишь п.1 (список пресетов) и синтаксис файла —
+компилятора и генератора тут нет, поэтому «configure зелёный» ты зафиксируешь сам, и именно поэтому он
+стоит отдельным пунктом приёмки, а не моей замеренной строкой.
+
+**Шаг 8 — создай контейнер тестов: `tests/CMakeLists.txt` и `tests/unit/test_core_smoke.cpp`
+(п.9 §7.2).**
+
+В `tests/CMakeLists.txt` должно быть:
+- `add_executable(tw_core_smoke unit/test_core_smoke.cpp)`;
+- `target_link_libraries(tw_core_smoke PRIVATE TrafficWatcher::Core)` — **только alias**: копировать
+  флаги ядра или добавить сюда `Qt::Quick` нельзя (§2.4, тонкость 3; урок 8.2 делает из этого контроль
+  слоёв);
+- `add_test(NAME core.mode.label COMMAND tw_core_smoke)` — имя по схеме «слой.сценарий», которую задаёт
+  [урок 8](08-testing-strategy.md);
+- никаких `enable_testing()` и `include(CTest)` здесь: это уже сделано в корне (шаг 6), и дублирование
+  маскирует случай, когда `BUILD_TESTING` выключен именно в пресете.
+
+В `tests/unit/test_core_smoke.cpp` должно быть:
+- `#include "trafficwatcher/core/Mode.hpp"` — та же форма пути, что на шаге 3: тест получает include-путь
+  только через требование ядра;
+- проверка результата `label` для `Mode::Solid` (§0.2) и `return 0`/`return 1` из `main`. QTest-механика
+  появится в уроке 8.2, сегодня достаточно `if`;
+- пометка «smoke-тест контейнера; заменяется тестами домена в уроке 8.2».
+
+Проверка: `ctest --preset win-msvc-debug` → `1/1` passed с именем `core.mode.label`;
+`ctest --test-dir build/win-msvc -N -C Debug` → тест найден ещё до запуска. Если `ctest` без `--preset`
+говорит «no tests were found» — `BUILD_TESTING` уехал из пресета (§5.3, третья строка), а не «тест
+сломался».
+
+**Шаг 9 — зафиксируй решения (п.3–4 §7.1).**
+
+Должно появиться:
+- `docs/adr/0001-toolchain.md` — плюс отдельной строкой туда же результат проверки из §5.3 про
+  `CMAKE_EXPORT_COMPILE_COMMANDS` на MSBuild-генераторе и выбранный генератор;
+- `docs/adr/0002-naming.md` — продукт / таргеты / include-пути / URI QML-модуля, плюс выбранный вариант
+  защиты от повторного включения (шаг 2) и имена, придуманные на шагах 2–3;
+- заполненный [`docs/answers/01-cmake-target-model.md`](../answers/01-cmake-target-model.md).
+
+Проверка: `git log --oneline` → не меньше пяти коммитов (по числу закрытых шагов 1–8), сообщения читаемы
+и без `╨Ю╤Б…` (§8, п.6); `git status` → пусто.
+
+### 7.4 Definition of Done
 
 - [ ] `cmake --preset <win-...>`, затем `cmake --build --preset <...>` проходят с нуля: удалил `build/` →
       зелёный прогон без единого ручного `-D`.
-- [ ] `cmake --graphviz=build/deps.dot build/<presetName>` показывает `tw_app → tw_core → Qt6::Core`
-      (если в комбинации с пресетом опция не сработает на твоём CMake — используй явный build-каталог и
+- [ ] `cmake --graphviz=build/deps.dot build/<presetName>` показывает `tw_app → tw_core → QtCore`
+      (имя узла — ровно то, которое ты написал в `target_link_libraries`: `Qt::Core` или `Qt6::Core`;
+      если в комбинации с пресетом опция не сработает на твоём CMake — используй явный build-каталог и
       запиши это в ADR-0001). `.dot` открыть глазами: это самый быстрый способ увидеть propagated requirements.
 - [ ] CLion подключён **через пресет** (Profile → CMake options = «Use preset»), а не ручными полями.
 - [ ] `ctest --preset ...` зелёный: тривиальный тест из п.9 найден и прошёл (первый зелёный лот CTest).
@@ -997,7 +1209,8 @@ int main() { auto s = std::format("{}", std::views::iota(0, 3) | std::ranges::di
 | Навыки, которые проверяем на практике | предсказать требования потребителя; найти фазу ошибки; заменить `if()` на `$<...>`; собрать из пресета без `-D` |
 | Тонкости уровня middle | шесть, все с проверкой одной командой: максимум стандарта в графе (§1.5/1), PIC и «у меня работает» на Linux (§1.5/2), область видимости alias (§2.4/3), `$<BUILD_INTERFACE:>` для не-API-флагов (§2.4/4), пустой элемент выражения и `SHELL:` (§4.4/5), фаза вычисления `$<...>` (§4.4/6) |
 | ADR, которые порождает урок | [0001 тулчейн](../adr/readme.md), 0002 имена/namespace, 0003 политика предупреждений |
-| Что появится в коде | `CMakeLists.txt`, `CMakePresets.json`, `include/trafficwatcher/core/Mode.hpp`, `src/core/mode.cpp`, `src/app/main.cpp`, `tests/unit/test_core_smoke.cpp` с одним `add_test` |
+| Что появится в коде | `CMakeLists.txt`, `src/CMakeLists.txt`, `CMakePresets.json`, `include/trafficwatcher/core/Mode.hpp`, `src/core/mode.cpp`, `src/app/main.cpp`, `tests/CMakeLists.txt`, `tests/unit/test_core_smoke.cpp` с одним `add_test` |
+| Порядок создания | §7.3 — девять шагов «создай файл, в нём должно быть …», каждый с командой проверки; шаг с открытой проверкой не считается закрытым |
 | Приложение | вход — пустое дерево; выход — собираемый и запускаемый `tw_app` вместе с `tw_core`, первый зелёный тест (§0.2). Строительные `Mode.hpp`/`main.cpp`/smoke-тест имеют записанный срок жизни: уроки 6.1 и 2.1 |
 | Файл ответов | [`answers/01-cmake-target-model.md`](../answers/01-cmake-target-model.md) — 17 вопросов, ответы вписываю я |
 | Справка по конструкциям | §14 — десять карточек урока в одной таблице: сигнатура, аргументы, граница применения, best practice, чем проверить |
