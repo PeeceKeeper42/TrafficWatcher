@@ -106,10 +106,10 @@ cmake --help-command find_package | Select-String -Pattern "COMPONENTS" | Select
 | # | Правило эталона | Где в уроке | Чем проверить |
 |---|---|---|---|
 | 1 | `find_package(Qt6 <мин. версия> COMPONENTS … REQUIRED)` — версия и компоненты в одном вызове, отсутствие — ошибка конфигурации | цикл 1 (1)–(3) | [qt-creator `CMakeLists.txt`](https://github.com/qt-creator/qt-creator/blob/master/CMakeLists.txt) |
-| 2 | `qt_standard_project_setup()` — сразу после `find_package`, до таргетов; `REQUIRES` = baseline ADR-0001 | цикл 1 (4) | [страница команды](https://doc.qt.io/qt-6/qt-std-project-setup.html) — «usually called right after the first call to find_package() … before any targets are defined» |
+| 2 | `qt_standard_project_setup()` — сразу после `find_package`, до таргетов; `REQUIRES` = baseline ADR-0001 | цикл 1 (4) | [страница команды](https://doc.qt.io/qt-6/qt-standard-project-setup.html) — «usually called right after the first call to find_package() … before any targets are defined» |
 | 3 | Опциональные и приватные компоненты — отдельным условным `find_package`, не общим списком | цикл 1 (8) | qt-creator: `if(Qt6_VERSION VERSION_GREATER_EQUAL 6.9.0) … OPTIONAL_COMPONENTS … QUIET` |
 | 4 | Один `qt_add_qml_module` на модуль, каталоги = сегменты URI, списки файлов явные | цикл 2 | [port-гид](https://doc.qt.io/qt-6/qt6-port-to-qt-add-qml-module.html); kdenlive `ecm_add_qml_module` |
-| 5 | Тип публикуется макросом у объявления, `main.cpp` не регистрирует ничего | цикл 3 | [define-types page](https://doc.qt.io/qt-6/qqmlregistration-definetypes.html) |
+| 5 | Тип публикуется макросом у объявления, `main.cpp` не регистрирует ничего | цикл 3 | [define-types page](https://doc.qt.io/qt-6/qtqml-cppintegration-definetypes.html) |
 | 6 | Статический контроль QML — цели, созданные самой системой сборки модуля, а не самописный список файлов | цикл 5 | `<target>_qmllint` / `all_qmllint`: [qt_add_qml_module page](https://doc.qt.io/qt-6/qt-add-qml-module.html) |
 
 ### Цикл 1 — Qt6 как узел графа (план 2.1; ≤25 минут)
@@ -186,7 +186,7 @@ defined» (страница). Симптом — не ошибка, а молч�
 
 **Тонкость 2.** Ключ `REQUIRES <version>` включает политики **до названной версии**, а
 `SUPPORTS_UP_TO` включает политики будущих версий, не делая их обязательными
-([страница команды](https://doc.qt.io/qt-6/qt-std-project-setup.html)). Для baseline 6.10
+([страница команды](https://doc.qt.io/qt-6/qt-standard-project-setup.html)). Для baseline 6.10
 `SUPPORTS_UP_TO 6.12` уместен **только если** сборка на 6.12 тоже принимается; без него поведение
 на будущих Qt — старые политики. Проверка своего поколения: `qt_policy(GET QTP0001 v)` +
 `message(STATUS "QTP0001: ${v}")`.
@@ -195,7 +195,7 @@ defined» (страница). Симптом — не ошибка, а молч�
 `.qrc` — это `RESOURCES` внутри `qt_add_qml_module` (цикл 2) или `qt_add_resources`, а не глобальная переменная. Старый проект ставил все три флага разом ([`legacy-description.md:20`](../legacy-description.md#L20)); перенос тройки «по привычке» создаёт второй, незаметный источник ресурсов, который потом конфликтует с генерируемыми путями. Проверка: `Select-String build/win-ninja-debug/CMakeCache.txt -Pattern "AUTORCC"` → `OFF` (проверь свой).
 
 **Ловушка.** В строке плана [`2.2`](../course.md#L126) стоит `QTP0081` — политики с таким номером
-**нет**: реестр Qt-политик — `QTP0001`–`QTP0008` ([страница политик](https://doc.qt.io/qt-6/cmake-qt-policies.html),
+**нет**: реестр Qt-политик — `QTP0001`–`QTP0008` ([страница политик](https://doc.qt.io/qt-6/qt-cmake-policies.html),
 проверено 25.11.2026 на двух языковых версиях документации). Это тот же класс ошибки, что
 `matrixPresets` урока 01: правдоподобный идентификатор, которого нет в реализации, — и его копируют. Проверенная привычка: про `QTP`-номер — вопрос к официальной странице и к `QT_KNOWN_POLICY_QTP<NNNN>` (существование переменной = существование политики).
 
@@ -376,7 +376,7 @@ Rectangle {
 1. **`#include <QtQml/qqmlregistration.h>`** — обязательный заголовок: без него макросы
    регистрации **раскрываются в пустоту**, а не в ошибку (см. «что будет, если нарушить»).
    Он же тянет определения `QML_ELEMENT`, `QML_NAMED_ELEMENT`, `QML_VALUE_TYPE`, `QML_SINGLETON`,
-   `QML_UNCREATABLE`, `QML_FOREIGN`, `QML_ANONYMOUS`, `QML_INTERFACE` — полная страница [Defining types for QML](https://doc.qt.io/qt-6/qqmlregistration-definetypes.html).
+   `QML_UNCREATABLE`, `QML_FOREIGN`, `QML_ANONYMOUS`, `QML_INTERFACE` — полная страница [Defining types for QML](https://doc.qt.io/qt-6/qtqml-cppintegration-definetypes.html).
 2. **Include под углом через `trafficwatcher/core/`** — требование из урока 01 (шаг 3):
    `Mode.hpp` доехал сюда через `PUBLIC` из цикла 1 (7). Первый случай, когда решение
    прошлого урока буквально собирает этот.
@@ -425,7 +425,7 @@ Rectangle {
 
 **Тонкость 3.** `QML_VALUE_TYPE` — для `Q_GADGET` (не QObject): имя в QML **строго строчное**,
 тип обязан быть конструируемым по умолчанию и копируемым, синглтоном быть не может
-([страница define-types](https://doc.qt.io/qt-6/qqmlregistration-definetypes.html)). Следствие: значения вроде координаты карты (модуль 13.1) публикуются как `modeinfo`, а не `ModeInfo`, и заглавная форма — та же «зелёная сборка / красный рантайм», что тонкость 1: значения типов проверяются qmllint по сгенерированному `qmltypes`, а он без макроса не знает о типе.
+([страница define-types](https://doc.qt.io/qt-6/qtqml-cppintegration-definetypes.html)). Следствие: значения вроде координаты карты (модуль 13.1) публикуются как `modeinfo`, а не `ModeInfo`, и заглавная форма — та же «зелёная сборка / красный рантайм», что тонкость 1: значения типов проверяются qmllint по сгенерированному `qmltypes`, а он без макроса не знает о типе.
 
 **Мини-практика и чекпойнт (3 минуты).**
 
@@ -439,7 +439,7 @@ $env:QT_QPA_PLATFORM = "offscreen"
 to start because no Qt platform plugin could be initialized` (текст — из Qt; сверь свой). Путь
 к бинарнику зависит от `CMAKE_RUNTIME_OUTPUT_DIRECTORY` (цикл 1 (4)) — точное место покажет `Get-ChildItem build/win-ninja-debug -Recurse -Filter tw_app.exe`.
 
-**Эталон цикла:** [Defining types for QML](https://doc.qt.io/qt-6/qqmlregistration-definetypes.html)
+**Эталон цикла:** [Defining types for QML](https://doc.qt.io/qt-6/qtqml-cppintegration-definetypes.html)
 — все макросы и ограничения; [Porting Guide](https://doc.qt.io/qt-6/qt6-port-to-qt-add-qml-module.html) — строка `qmlRegisterType` → `QML_ELEMENT` таблиц перехода; KDAB [«10 Tips for Writing Robust QML Code»](https://www.kdab.com/10-tips-for-writing-robust-qml-code/) — почему регистрация должна быть у объявления, а не в main (обсуждается и в комментариях ECM к `ECMQmlModule.cmake`).
 
 ### Цикл 4 — Smoke-тест: «engine загрузил модуль» headless (приёмка модуля 2; ≤25 минут)
@@ -787,10 +787,10 @@ VS-пресете (см. цикл 5 (6)), сравнение вывода `qmlfo
 | Конструкция | Полная форма (категория) | Ключевые аргументы | Где применима | Где неприменима | Best practice + следствие | Тонкость | Чем проверить |
 |---|---|---|---|---|---|---|---|
 | `find_package(Qt6 …)` | команда CMake: `find_package(<PackageName> [<version>] [REQUIRED] [COMPONENTS <components>...])` | `<version>` = минимум; `COMPONENTS` = нужные `Qt6::*` | корень, до первого таргета | вместо `FetchContent`-сборки Qt из исходников (модуль 12.1 — другой вопрос) | `REQUIRED` + версия; иначе `Unknown CMake command "qt_standard_project_setup"` | компоненты ≠ линковка: ищут больше, чем линкуют (qt-creator) | `cmake --help-command find_package`; вывод `Qt6Config` в логе |
-| `qt_standard_project_setup` | команда Qt (с 6.3): `[REQUIRES <ver>] [SUPPORTS_UP_TO <ver>] [I18N_TRANSLATED_LANGUAGES <lang>...] [I18N_SOURCE_LANGUAGE <lang>]` | `REQUIRES` = baseline ADR-0001 | сразу после `find_package`, до таргетов | после `add_subdirectory`: ранее объявленные цели не получат AUTOMOC; сама команда не включает `AUTORCC` | `REQUIRES 6.10`; иначе политики не включены, поведение qmlcachegen/ресурсов — старое | ставит `CMAKE_AUTOMOC/AUTOUIC` только «if not already defined» — унаследованное значение побеждает молча | `cmake --help-command qt_standard_project_setup`; [страница команды](https://doc.qt.io/qt-6/qt-std-project-setup.html) |
-| `qt_policy` | команда Qt (с 6.5): `qt_policy([SET <policy> NEW\|OLD] [GET <policy> <var>])` | `QTP0001`…`QTP0008` | когда политику надо зафиксировать точечно, не весь `REQUIRES`-блок | для `CMP…` — там `cmake_policy`, номера смешивать нельзя | явный `SET QTP0001 NEW` рядом с `REQUIRES`; иначе «какое поколение принято» не видно в репозитории | существование проверяют `QT_KNOWN_POLICY_QTP<NNNN>`; `QTP0081` не существует (реестр: QTP0001–QTP0008) | [Qt CMake policies](https://doc.qt.io/qt-6/cmake-qt-policies.html), `cmake --help-command qt_policy` |
+| `qt_standard_project_setup` | команда Qt (с 6.3): `[REQUIRES <ver>] [SUPPORTS_UP_TO <ver>] [I18N_TRANSLATED_LANGUAGES <lang>...] [I18N_SOURCE_LANGUAGE <lang>]` | `REQUIRES` = baseline ADR-0001 | сразу после `find_package`, до таргетов | после `add_subdirectory`: ранее объявленные цели не получат AUTOMOC; сама команда не включает `AUTORCC` | `REQUIRES 6.10`; иначе политики не включены, поведение qmlcachegen/ресурсов — старое | ставит `CMAKE_AUTOMOC/AUTOUIC` только «if not already defined» — унаследованное значение побеждает молча | `cmake --help-command qt_standard_project_setup`; [страница команды](https://doc.qt.io/qt-6/qt-standard-project-setup.html) |
+| `qt_policy` | команда Qt (с 6.5): `qt_policy([SET <policy> NEW\|OLD] [GET <policy> <var>])` | `QTP0001`…`QTP0008` | когда политику надо зафиксировать точечно, не весь `REQUIRES`-блок | для `CMP…` — там `cmake_policy`, номера смешивать нельзя | явный `SET QTP0001 NEW` рядом с `REQUIRES`; иначе «какое поколение принято» не видно в репозитории | существование проверяют `QT_KNOWN_POLICY_QTP<NNNN>`; `QTP0081` не существует (реестр: QTP0001–QTP0008) | [Qt CMake policies](https://doc.qt.io/qt-6/qt-cmake-policies.html), `cmake --help-command qt_policy` |
 | `qt_add_qml_module` | команда Qt (с 6.2): `qt_add_qml_module(target URI <uri> [VERSION] [QML_FILES…] [SOURCES…] [RESOURCES…] [PLUGIN_TARGET] [NO_PLUGIN] [DEPENDENCIES…] [IMPORTS…] [OUTPUT_DIRECTORY] [DISCARD_QML_CONTENTS] …)` | URI + каталоги = target path; backing + plugin-таргет | один вызов на QML-модуль (`tw_ui`) | не для «просто добавить .qml в exe» без модуля — там достаточно `qt_add_resources` (проверь форму) | явные списки, без `RESOURCE_PREFIX`/`OUTPUT_DIRECTORY` при правильном layout; иначе две копии `qmldir` и рассинхрон импортов | каталог ≠ target path — warning, сборка зелёная, импорт падает в рантайме; `DISCARD_QML_CONTENTS` (6.10) привязывает `.qsb` к версии qmlcachegen | [страница команды](https://doc.qt.io/qt-6/qt-add-qml-module.html) (в `--help-command` CMake её нет — это команда Qt); создаваемые цели: `--target help`, `all_qmllint` |
-| `QML_ELEMENT` (семейство: `QML_NAMED_ELEMENT`, `QML_UNCREATABLE`, `QML_SINGLETON`, `QML_FOREIGN`, `QML_VALUE_TYPE`, `QML_ANONYMOUS`, `QML_INTERFACE`) | макросы C++ (Qt 6), в объявлении класса/гаджета | требуется `#include <QtQml/qqmlregistration.h>`; класс — в таргете `qt_add_qml_module` | публикация типа домена (`LightBulb`) | `QML_VALUE_TYPE` — только Q_GADGET, имя строчное, не singleton; QObject-типы им не публикуются | регистрация у объявления, а не в main; иначе 4 строки `qmlRegisterType` = 4 точки рассинхрона (legacy-находка `3`) | без include макрос раскрыт в пустоту: сборка зелёная, тип неизвестен в рантайме | [Defining types for QML](https://doc.qt.io/qt-6/qqmlregistration-definetypes.html); генерируемый `*qmlreg*` в build-дереве |
+| `QML_ELEMENT` (семейство: `QML_NAMED_ELEMENT`, `QML_UNCREATABLE`, `QML_SINGLETON`, `QML_FOREIGN`, `QML_VALUE_TYPE`, `QML_ANONYMOUS`, `QML_INTERFACE`) | макросы C++ (Qt 6), в объявлении класса/гаджета | требуется `#include <QtQml/qqmlregistration.h>`; класс — в таргете `qt_add_qml_module` | публикация типа домена (`LightBulb`) | `QML_VALUE_TYPE` — только Q_GADGET, имя строчное, не singleton; QObject-типы им не публикуются | регистрация у объявления, а не в main; иначе 4 строки `qmlRegisterType` = 4 точки рассинхрона (legacy-находка `3`) | без include макрос раскрыт в пустоту: сборка зелёная, тип неизвестен в рантайме | [Defining types for QML](https://doc.qt.io/qt-6/qtqml-cppintegration-definetypes.html); генерируемый `*qmlreg*` в build-дереве |
 | `qt_add_executable` | команда Qt: wrapper над `add_executable` (`qt_add_executable(<target> <sources>...)`) | тот же смысл + обработка static-Qt (плагины), платформенные имена | `tw_app`, `tw_ui_smoke` | не даёт `add_test` — регистрация теста отдельно; не нужен в pure-Qt-free таргетах (`tw_core`) | цели приложения — через обёртку Qt6 (`cmake-get-started` использует её весь); иначе ручная линковка плагинов в static-сборках | для `tw_core` её нет: QtCore там не появилось — намеренно (модуль 6.1) | [Getting started with CMake](https://doc.qt.io/qt-6/cmake-get-started.html) |
 | `loadFromModule` | метод `QQmlApplicationEngine` (since 6.5): `void loadFromModule(QAnyStringView uri, QAnyStringView typeName)` | модуль + тип, не путь | `main.cpp`, smoke-тест | `QtObject`-root с `ApplicationWindow`-требованиями окна — проверь поведение под offscreen; `QQmlComponent::loadFromModule` — другой overload (страница) | loadFromModule вместо `load("qrc:/…")`; иначе путь в ресурсах — часть API приложения | конструктор `QQmlApplicationEngine(QObject*, QAnyStringView, QAnyStringView)` — convenience, не обязателен | [QQmlApplicationEngine](https://doc.qt.io/qt-6/qqmlapplicationengine.html) (строка «since 6.5» сверена 25.11.2026) |
 | `ENVIRONMENT` / `WILL_FAIL` (CTest) | свойства теста (`set_tests_properties`) | `ENVIRONMENT "VAR=value;…"`, инверсия результата | offscreen smoke, negative control | не заменяют `WORKING_DIRECTORY` для поиска файлов; `WILL_FAIL` инвертует всё, включая «бинарник не найден» | negative control обязателен с первого UI-теста; иначе красный CI неотличим от сломанного пайплайна | см. тонкость 4 цикла 4: `COMMAND <file.exe>` без target-формы → `Not Run`, код 8 | `ctest --help-property ENVIRONMENT`, `--help-property-list` |
